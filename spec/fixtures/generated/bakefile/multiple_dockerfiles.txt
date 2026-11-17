@@ -1,0 +1,101 @@
+# !!! THIS IS A GENERATED FILE !!! DON'T EDIT ME MANUALLY !!!
+# Instead edit donico.yml and run donico generate-files
+
+variable "BUILD_DATE" {
+  validation {
+    condition = BUILD_DATE != ""
+    error_message = "The variable 'BUILD_DATE' must not be empty."
+  }
+}
+
+#########################
+# BULLSEYE - ruby 3.2.0 #
+#########################
+
+target "bullseye-3-2-0-build" {
+  dockerfile = "dockerfiles/3.2/Dockerfile"
+  args = {
+    BUILD_DATE = "${BUILD_DATE}"
+    DISTRO_NAME = "bullseye"
+    NODEJS_VERSION = "14.17.3"
+    RUBY_VERSION = "3.2.0"
+  }
+  secret = [
+    {
+      type = "env"
+      id = "GITHUB_TOKEN"
+    },
+  ]
+  platforms = ["linux/amd64", "linux/arm64"]
+  output    = [{ type = "docker" }]
+  tags      = ["ruby/3.2.0/bullseye:${BUILD_DATE}"]
+}
+
+target "bullseye-3-2-0-push" {
+  dockerfile = "dockerfiles/3.2/Dockerfile"
+  args = {
+    BUILD_DATE = "${BUILD_DATE}"
+    DISTRO_NAME = "bullseye"
+    NODEJS_VERSION = "14.17.3"
+    RUBY_VERSION = "3.2.0"
+  }
+  secret = [
+    {
+      type = "env"
+      id = "GITHUB_TOKEN"
+    },
+  ]
+  platforms = ["linux/amd64", "linux/arm64"]
+  output    = [{ type = "registry" }]
+  tags      = [
+    "registry.example.net/images/base/ruby:3.2.0-bullseye",
+    "registry.example.net/images/base/ruby:latest-bullseye",
+  ]
+}
+
+#######################
+# BUSTER - ruby 3.1.3 #
+#######################
+
+target "buster-3-1-3-build" {
+  dockerfile = "dockerfiles/3.1/Dockerfile"
+  args = {
+    BUILD_DATE = "${BUILD_DATE}"
+    DISTRO_NAME = "buster"
+    NODEJS_VERSION = "14.17.3"
+    RUBY_VERSION = "3.1.3"
+  }
+  secret = [
+    {
+      type = "file"
+      id = "aws"
+      src = "${HOME}/.aws/credentials"
+    },
+  ]
+  platforms = ["linux/amd64"]
+  output    = [{ type = "docker" }]
+  tags      = ["ruby/3.1.3/buster:${BUILD_DATE}"]
+}
+
+target "buster-3-1-3-push" {
+  dockerfile = "dockerfiles/3.1/Dockerfile"
+  args = {
+    BUILD_DATE = "${BUILD_DATE}"
+    DISTRO_NAME = "buster"
+    NODEJS_VERSION = "14.17.3"
+    RUBY_VERSION = "3.1.3"
+  }
+  secret = [
+    {
+      type = "file"
+      id = "aws"
+      src = "${HOME}/.aws/credentials"
+    },
+  ]
+  platforms = ["linux/amd64"]
+  output    = [{ type = "registry" }]
+  tags      = [
+    "registry.example.net/images/base/ruby:3.1.3-buster",
+    "registry.example.net/images/base/ruby:latest-buster",
+  ]
+}

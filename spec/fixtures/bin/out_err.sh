@@ -1,0 +1,3 @@
+#!/bin/sh
+echo out
+echo err >&2

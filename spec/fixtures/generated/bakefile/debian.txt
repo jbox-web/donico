@@ -1,0 +1,249 @@
+# !!! THIS IS A GENERATED FILE !!! DON'T EDIT ME MANUALLY !!!
+# Instead edit donico.yml and run donico generate-files
+
+variable "BUILD_DATE" {
+  validation {
+    condition = BUILD_DATE != ""
+    error_message = "The variable 'BUILD_DATE' must not be empty."
+  }
+}
+
+##############################
+# BOOKWORM - bookworm latest #
+##############################
+
+target "bookworm-latest-build" {
+  dockerfile = "Dockerfile"
+  args = {
+    BOOKWORM_VERSION = "latest"
+    BUILD_DATE = "${BUILD_DATE}"
+    DISTRO_NAME = "bookworm"
+  }
+  platforms = ["linux/amd64", "linux/386", "linux/arm64"]
+  output    = [{ type = "docker" }]
+  tags      = ["bookworm/latest/bookworm:${BUILD_DATE}"]
+}
+
+target "bookworm-latest-push" {
+  dockerfile = "Dockerfile"
+  args = {
+    BOOKWORM_VERSION = "latest"
+    BUILD_DATE = "${BUILD_DATE}"
+    DISTRO_NAME = "bookworm"
+  }
+  platforms = ["linux/amd64", "linux/386", "linux/arm64"]
+  output    = [{ type = "registry" }]
+  tags      = [
+    "registry.example.net/debian/bookworm:latest",
+  ]
+}
+
+##############################
+# BULLSEYE - bullseye latest #
+##############################
+
+target "bullseye-latest-build" {
+  dockerfile = "Dockerfile"
+  args = {
+    BUILD_DATE = "${BUILD_DATE}"
+    BULLSEYE_VERSION = "latest"
+    DISTRO_NAME = "bullseye"
+  }
+  platforms = ["linux/amd64", "linux/386", "linux/arm64"]
+  output    = [{ type = "docker" }]
+  tags      = ["bullseye/latest/bullseye:${BUILD_DATE}"]
+}
+
+target "bullseye-latest-push" {
+  dockerfile = "Dockerfile"
+  args = {
+    BUILD_DATE = "${BUILD_DATE}"
+    BULLSEYE_VERSION = "latest"
+    DISTRO_NAME = "bullseye"
+  }
+  platforms = ["linux/amd64", "linux/386", "linux/arm64"]
+  output    = [{ type = "registry" }]
+  tags      = [
+    "registry.example.net/debian/bullseye:latest",
+  ]
+}
+
+##########################
+# BUSTER - buster latest #
+##########################
+
+target "buster-latest-build" {
+  dockerfile = "Dockerfile"
+  args = {
+    BUILD_DATE = "${BUILD_DATE}"
+    BUSTER_VERSION = "latest"
+    DISTRO_NAME = "buster"
+  }
+  platforms = ["linux/amd64", "linux/386", "linux/arm64"]
+  output    = [{ type = "docker" }]
+  tags      = ["buster/latest/buster:${BUILD_DATE}"]
+}
+
+target "buster-latest-push" {
+  dockerfile = "Dockerfile"
+  args = {
+    BUILD_DATE = "${BUILD_DATE}"
+    BUSTER_VERSION = "latest"
+    DISTRO_NAME = "buster"
+  }
+  platforms = ["linux/amd64", "linux/386", "linux/arm64"]
+  output    = [{ type = "registry" }]
+  tags      = [
+    "registry.example.net/debian/buster:latest",
+  ]
+}
+
+############################
+# STRETCH - stretch latest #
+############################
+
+target "stretch-latest-build" {
+  dockerfile = "Dockerfile"
+  args = {
+    BUILD_DATE = "${BUILD_DATE}"
+    DISTRO_NAME = "stretch"
+    STRETCH_VERSION = "latest"
+  }
+  platforms = ["linux/amd64", "linux/386", "linux/arm64"]
+  output    = [{ type = "docker" }]
+  tags      = ["stretch/latest/stretch:${BUILD_DATE}"]
+}
+
+target "stretch-latest-push" {
+  dockerfile = "Dockerfile"
+  args = {
+    BUILD_DATE = "${BUILD_DATE}"
+    DISTRO_NAME = "stretch"
+    STRETCH_VERSION = "latest"
+  }
+  platforms = ["linux/amd64", "linux/386", "linux/arm64"]
+  output    = [{ type = "registry" }]
+  tags      = [
+    "registry.example.net/debian/stretch:latest",
+  ]
+}
+
+##########################
+# JESSIE - jessie latest #
+##########################
+
+target "jessie-latest-build" {
+  dockerfile = "Dockerfile"
+  args = {
+    BUILD_DATE = "${BUILD_DATE}"
+    DISTRO_NAME = "jessie"
+    JESSIE_VERSION = "latest"
+  }
+  platforms = ["linux/amd64", "linux/386"]
+  output    = [{ type = "docker" }]
+  tags      = ["jessie/latest/jessie:${BUILD_DATE}"]
+}
+
+target "jessie-latest-push" {
+  dockerfile = "Dockerfile"
+  args = {
+    BUILD_DATE = "${BUILD_DATE}"
+    DISTRO_NAME = "jessie"
+    JESSIE_VERSION = "latest"
+  }
+  platforms = ["linux/amd64", "linux/386"]
+  output    = [{ type = "registry" }]
+  tags      = [
+    "registry.example.net/debian/jessie:latest",
+  ]
+}
+
+##########################
+# WHEEZY - wheezy latest #
+##########################
+
+target "wheezy-latest-build" {
+  dockerfile = "Dockerfile"
+  args = {
+    BUILD_DATE = "${BUILD_DATE}"
+    DISTRO_NAME = "wheezy"
+    WHEEZY_VERSION = "latest"
+  }
+  platforms = ["linux/amd64", "linux/386"]
+  output    = [{ type = "docker" }]
+  tags      = ["wheezy/latest/wheezy:${BUILD_DATE}"]
+}
+
+target "wheezy-latest-push" {
+  dockerfile = "Dockerfile"
+  args = {
+    BUILD_DATE = "${BUILD_DATE}"
+    DISTRO_NAME = "wheezy"
+    WHEEZY_VERSION = "latest"
+  }
+  platforms = ["linux/amd64", "linux/386"]
+  output    = [{ type = "registry" }]
+  tags      = [
+    "registry.example.net/debian/wheezy:latest",
+  ]
+}
+
+############################
+# SQUEEZE - squeeze latest #
+############################
+
+target "squeeze-latest-build" {
+  dockerfile = "Dockerfile"
+  args = {
+    BUILD_DATE = "${BUILD_DATE}"
+    DISTRO_NAME = "squeeze"
+    SQUEEZE_VERSION = "latest"
+  }
+  platforms = ["linux/amd64", "linux/386"]
+  output    = [{ type = "docker" }]
+  tags      = ["squeeze/latest/squeeze:${BUILD_DATE}"]
+}
+
+target "squeeze-latest-push" {
+  dockerfile = "Dockerfile"
+  args = {
+    BUILD_DATE = "${BUILD_DATE}"
+    DISTRO_NAME = "squeeze"
+    SQUEEZE_VERSION = "latest"
+  }
+  platforms = ["linux/amd64", "linux/386"]
+  output    = [{ type = "registry" }]
+  tags      = [
+    "registry.example.net/debian/squeeze:latest",
+  ]
+}
+
+########################
+# LENNY - lenny latest #
+########################
+
+target "lenny-latest-build" {
+  dockerfile = "Dockerfile"
+  args = {
+    BUILD_DATE = "${BUILD_DATE}"
+    DISTRO_NAME = "lenny"
+    LENNY_VERSION = "latest"
+  }
+  platforms = ["linux/amd64", "linux/386"]
+  output    = [{ type = "docker" }]
+  tags      = ["lenny/latest/lenny:${BUILD_DATE}"]
+}
+
+target "lenny-latest-push" {
+  dockerfile = "Dockerfile"
+  args = {
+    BUILD_DATE = "${BUILD_DATE}"
+    DISTRO_NAME = "lenny"
+    LENNY_VERSION = "latest"
+  }
+  platforms = ["linux/amd64", "linux/386"]
+  output    = [{ type = "registry" }]
+  tags      = [
+    "registry.example.net/debian/lenny:latest",
+  ]
+}

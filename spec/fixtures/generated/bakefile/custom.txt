@@ -1,0 +1,67 @@
+# !!! THIS IS A GENERATED FILE !!! DON'T EDIT ME MANUALLY !!!
+# Instead edit donico.yml and run donico generate-files
+
+variable "BUILD_DATE" {
+  validation {
+    condition = BUILD_DATE != ""
+    error_message = "The variable 'BUILD_DATE' must not be empty."
+  }
+}
+
+##########################
+# BUSTER - foo-bar 1.0.0 #
+##########################
+
+target "buster-1-0-0-build" {
+  dockerfile = "foo/Dockerfile"
+  args = {
+    BAR_VERSION = "Zm9vCg=="
+    BUILD_DATE = "${BUILD_DATE}"
+    DISTRO_NAME = "buster"
+    FOO_BAR_VERSION = "1.0.0"
+    NODEJS_VERSION = "14.17.3"
+  }
+  secret = [
+    {
+      type = "env"
+      id = "GITHUB_TOKEN"
+    },
+    {
+      type = "file"
+      id = "aws"
+      src = "${HOME}/.aws/credentials"
+    },
+  ]
+  platforms = ["linux/amd64"]
+  output    = [{ type = "docker" }]
+  tags      = ["foo-bar/1.0.0/buster:${BUILD_DATE}"]
+}
+
+target "buster-1-0-0-push" {
+  dockerfile = "foo/Dockerfile"
+  args = {
+    BAR_VERSION = "Zm9vCg=="
+    BUILD_DATE = "${BUILD_DATE}"
+    DISTRO_NAME = "buster"
+    FOO_BAR_VERSION = "1.0.0"
+    NODEJS_VERSION = "14.17.3"
+  }
+  secret = [
+    {
+      type = "env"
+      id = "GITHUB_TOKEN"
+    },
+    {
+      type = "file"
+      id = "aws"
+      src = "${HOME}/.aws/credentials"
+    },
+  ]
+  platforms = ["linux/amd64"]
+  output    = [{ type = "registry" }]
+  tags      = [
+    "registry.example.net/images/base/foo-bar:1.0.0",
+    "registry.example.net/images/base/foo-bar:1.0.0-buster",
+    "registry.example.net/images/base/foo-bar:latest",
+  ]
+}

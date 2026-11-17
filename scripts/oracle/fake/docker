@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Stand-in for every network- or container-capable command the oracle's children
+# could reach. It is installed under several names (the others are symlinks to
+# this file) and does only one thing: append the call to the file named by
+# ORACLE_LOG. Nothing real is ever started, fetched or sent.
+#
+# It must run on the system bash (3.2) as well as on a recent one: the children
+# get a PATH without Homebrew, so `#!/usr/bin/env bash` resolves to /bin/bash.
+# Only builtins are used, for the same reason and for speed; the one exception
+# is the `ps` of the caller record below.
+
+name=${0##*/}
+
+# The record of the call is built first and written with one printf: two fakes
+# running at the same time (a hook that starts `docker a & docker b`) then log
+# two whole records instead of interleaved lines.
+if [ "${name}" = docker ]; then
+  record='--- call'$'\n'
+else
+  record="--- call ${name}"$'\n'
+fi
+
+if [ "$#" -gt 0 ]; then
+  printf -v lines '%s\n' "$@"
+  record+="${lines}"
+fi
+
+# The variables the oracle wants to see as the command sees them: build args
+# and Inspec inputs of the repository, by name only, listed in ORACLE_VARS. A
+# name that is not an identifier cannot be a variable: it is logged as unset,
+# on bash 3.2 and 5 alike, instead of an "invalid variable name" error.
+identifier='^[A-Za-z_][A-Za-z0-9_]*$'
+for var in ${ORACLE_VARS:-}; do
+  if [[ ${var} =~ ${identifier} ]] && [ -n "${!var+x}" ]; then
+    record+="env ${var}=${!var}"$'\n'
+  else
+    record+="env ${var}=<unset>"$'\n'
+  fi
+done
+printf '%s' "${record}" >>"${ORACLE_LOG:-/dev/null}"
+
+# Who called: the command line of the parent process, in a file of its own so
+# that the call log, which both sides must reproduce, stays untouched. It lets
+# the oracle prove that a project hook (and not the harness) made a call.
+if [ -n "${ORACLE_CALLERS:-}" ]; then
+  printf '%s\t%s\n' "${name}" "$(ps -o args= -p "${PPID}" 2>/dev/null)" >>"${ORACLE_CALLERS}"
+fi
+
+if [ "${name}" != docker ]; then
+  exit 0
+fi
+
+# The arguments joined by spaces, as a regular expression sees them.
+joined="$*"
+if [ -n "${ORACLE_FAIL_MATCH:-}" ] && [[ ${joined} =~ ${ORACLE_FAIL_MATCH} ]]; then
+  # ORACLE_FAIL_SILENT=1: a start that fails without printing a container id.
+  if [ -z "${ORACLE_FAIL_SILENT:-}" ]; then
+    printf '%s\n' fakecontainer0001
+  fi
+  exit "${ORACLE_FAIL_STATUS:-1}"
+fi
+
+printf '%s\n' fakecontainer0001
+exit 0

@@ -1,0 +1,31 @@
+# Ameba configuration, written out rather than left implicit: the defaults move
+# between ameba releases, and a project that never states its own gets its rule
+# set changed underneath it by a `shards update`.
+#
+# Run it through `mise dev:ameba`, never `ameba` directly — the task bounds
+# the analysis with mise's own `timeout`, because ameba can spin at 100% CPU
+# indefinitely on some inputs.
+#
+# Version this file was written against: ameba 1.7.0.
+
+# lib/ holds vendored shards; licenses/, dist/ and coverage/ (the spec entry
+# point `mise dev:coverage` writes) are generated. None of them are ours to
+# lint.
+Globs:
+  - "**/*.cr"
+  - "!lib"
+  - "!licenses"
+  - "!dist"
+  - "!coverage"
+
+# Renamed from Documentation/DocumentationAdmonition in 1.7.0, and disabled by
+# default since. ameba 1.7.0 silently ignores unknown keys, so the old name
+# would switch the guard off without a word.
+Documentation/Admonition:
+  Enabled: true
+  # TODO markers are allowed to live in the tree — mise.toml and the CI
+  # workflows both carry one pointing at crystal-lang/crystal#16746, which is
+  # not ours to close. FIXME and BUG still fail the build.
+  Admonitions:
+    - FIXME
+    - BUG

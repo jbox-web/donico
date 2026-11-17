@@ -1,0 +1,12 @@
+# !!! THIS IS A GENERATED FILE !!! DON'T EDIT ME MANUALLY !!!
+# Instead edit donico.yml and run donico generate-files
+---
+".matrix":
+  parallel:
+    matrix:
+    - VERSION: '0.17'
+      DOCKER_DISTRO: trixie
+    - VERSION: '18'
+      DOCKER_DISTRO: trixie
+    - VERSION: 1.31.8
+      DOCKER_DISTRO: trixie

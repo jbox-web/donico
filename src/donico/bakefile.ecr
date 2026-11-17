@@ -1,0 +1,59 @@
+# !!! THIS IS A GENERATED FILE !!! DON'T EDIT ME MANUALLY !!!
+# Instead edit donico.yml and run donico generate-files
+
+variable "BUILD_DATE" {
+  validation {
+    condition = BUILD_DATE != ""
+    error_message = "The variable 'BUILD_DATE' must not be empty."
+  }
+}
+<%- @images.each do |image| %>
+<%- comments = "#" * (image.distro.size + image.name.size + image.version.size + 8) -%>
+<%= comments %>
+# <%= image.distro.upcase %> - <%= image.name %> <%= image.version %> #
+<%= comments %>
+<%- {false, true}.each do |push| %>
+target "<%= push ? image.push_target : image.build_target %>" {
+  dockerfile = "<%= Hcl.literal(image.entry.dockerfile) %>"
+  args = {
+    <%- image.raw_build_args.each do |arg| -%>
+    <%- name, _, value = arg.partition('=') -%>
+    <%- if name == "BUILD_DATE" -%>
+    <%= name %> = "${<%= name %>}"
+    <%- else -%>
+    <%= name %> = "<%= Hcl.literal(value) %>"
+    <%- end -%>
+    <%- end -%>
+  }
+  <%- if secrets?(image) -%>
+  secret = [
+    <%- image.entry.secret_envs.each do |secret| -%>
+    {
+      type = "env"
+      id = "<%= Hcl.escape(secret["id"]) %>"
+    },
+    <%- end -%>
+    <%- image.entry.secret_files.each do |secret| -%>
+    {
+      type = "file"
+      id = "<%= Hcl.escape(secret["id"]) %>"
+      src = "<%= Hcl.escape(secret["src"]) %>"
+    },
+    <%- end -%>
+  ]
+  <%- end -%>
+  platforms = <%= RubyList.render(image.entry.archs) %>
+  <%- if push -%>
+  output    = [{ type = "registry" }]
+  tags      = [
+  <%- image.prod_tags.each do |tag| -%>
+    "<%= tag %>",
+  <%- end -%>
+  ]
+  <%- else -%>
+  output    = [{ type = "docker" }]
+  tags      = ["<%= image.name %>/<%= image.version %>/<%= image.distro %>:${BUILD_DATE}"]
+  <%- end -%>
+}
+<%- end -%>
+<%- end -%>

@@ -1,0 +1,8 @@
+# !!! THIS IS A GENERATED FILE !!! DON'T EDIT ME MANUALLY !!!
+# Instead edit donico.yml and run donico generate-files
+---
+".matrix":
+  parallel:
+    matrix:
+    - VERSION: latest
+      DOCKER_DISTRO: buster

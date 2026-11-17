@@ -1,0 +1,82 @@
+# Example donico.yml: every key donico reads, with a comment on what it does
+# and its default. Copy it to `donico.yml` at the root of an image repository
+# (next to the Dockerfile), keep what you need, then run:
+#
+#   donico generate-files     # writes docker-bake.hcl and the CI matrix
+#   donico help               # lists the tasks of the matrix below
+#
+# Full reference: README.md, "Configuration: donico.yml". Keys donico does not
+# know are ignored, so the file can carry yours.
+
+# Required. The pushed tags are <registry>/<image_name>:<tag>.
+registry: registry.example.com/base
+
+# The name of the image: letters, digits, `.`, `_`, `-` and `/`. A matrix row
+# may set its own instead.
+image_name: myapp
+
+# The only builder is `bake` (docker buildx bake), which is also the default.
+image_builder: bake
+
+# Where the two tool images are looked for: <tools_registry>/hadolint:latest
+# for `lint-dockerfile`, <tools_registry>/inspec:latest for `test`.
+# Default: the value of `registry`.
+tools_registry: registry.example.com/tools
+
+# Or name each image in full. The InSpec image runs with the docker socket of
+# the host: a digest pins the one that was reviewed.
+# docker_linter: registry.example.com/ci/hadolint:2.12
+# inspec_image: registry.example.com/ci/inspec@sha256:0000000000000000000000000000000000000000000000000000000000000000
+
+# Not a key of donico: a YAML anchor holding what the rows share. A row takes
+# it with `<<: *common`, and a key written after the merge overrides it.
+x-common: &common
+  # Platforms passed to bake. Default: ["linux/amd64"].
+  archs: [linux/amd64, linux/arm64]
+  # Relative to this directory. Default: Dockerfile.
+  dockerfile: Dockerfile
+  # KEY=VALUE, each name once. donico adds DISTRO_NAME, BUILD_DATE and
+  # MYAPP_VERSION (<IMAGE_NAME>_VERSION) itself: those three are reserved.
+  build_args:
+    - APP_USER=app
+  # Tags of the pushed image. Macros: %<version>s, %<distro>s, %<timestamp>s.
+  # Default: ["%<version>s-%<distro>s"].
+  tags:
+    - "%<version>s-%<distro>s"
+    - "%<version>s-%<distro>s-%<timestamp>s"
+
+# One row per image to build. Each row gets five tasks,
+# <distro>:<version>:build|test|push|clean|login. Without `matrix`, the
+# project has one row with every default.
+matrix:
+  - <<: *common
+    # Always quoted: unquoted, YAML reads 1.0 as a number. Default: latest.
+    version: "1.0"
+    # Default: buster.
+    distro: bookworm
+    # Extra InSpec inputs, not passed to the build.
+    test_args:
+      - expected_user=app
+    # Build secrets read from an environment variable named `id`. `build` and
+    # `push` refuse to start when it is not set.
+    secret_envs:
+      - id: GITHUB_TOKEN
+    # Build secrets read from a file. A relative `src` is relative to this
+    # directory; "${HOME}/..." is resolved by bake.
+    secret_files:
+      - id: netrc
+        src: .netrc
+    # `test` runs the InSpec suite once per list, with these inputs added.
+    test_variants:
+      - ["run_mode=default"]
+      - ["run_mode=dind"]
+    # Names of the environment variables `login` forwards into the container.
+    login_env: [SSH_PRIVATE_KEY]
+
+  - <<: *common
+    version: "1.0"
+    distro: trixie
+    # Overrides the tags of the anchor for this row.
+    tags:
+      - "%<version>s-%<distro>s"
+      - latest

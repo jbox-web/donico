@@ -1,0 +1,39 @@
+# !!! THIS IS A GENERATED FILE !!! DON'T EDIT ME MANUALLY !!!
+# Instead edit donico.yml and run donico generate-files
+
+variable "BUILD_DATE" {
+  validation {
+    condition = BUILD_DATE != ""
+    error_message = "The variable 'BUILD_DATE' must not be empty."
+  }
+}
+
+#######################
+# BUSTER - foo latest #
+#######################
+
+target "buster-latest-build" {
+  dockerfile = "Dockerfile"
+  args = {
+    BUILD_DATE = "${BUILD_DATE}"
+    DISTRO_NAME = "buster"
+    FOO_VERSION = "latest"
+  }
+  platforms = ["linux/amd64"]
+  output    = [{ type = "docker" }]
+  tags      = ["foo/latest/buster:${BUILD_DATE}"]
+}
+
+target "buster-latest-push" {
+  dockerfile = "Dockerfile"
+  args = {
+    BUILD_DATE = "${BUILD_DATE}"
+    DISTRO_NAME = "buster"
+    FOO_VERSION = "latest"
+  }
+  platforms = ["linux/amd64"]
+  output    = [{ type = "registry" }]
+  tags      = [
+    "registry.example.net/images/base/foo:latest-buster",
+  ]
+}

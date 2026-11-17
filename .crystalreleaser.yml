@@ -1,0 +1,122 @@
+# donico is released by crystalreleaser. Used by:
+#   - `mise release:static` (CI, every push): build --split --snapshot --clean,
+#     then release --merge --snapshot --allow-missing --skip=publish (the exact
+#     commands are in mise.toml)
+#   - .github/workflows/release.yml (tag v*): build --split on three runners,
+#     then release --merge
+version: 1
+project_name: donico
+
+builds:
+  - id: donico
+    target: donico
+    flags: [--release, --no-debug]
+    env:
+      # Read by src/donico/version.cr at compile time.
+      - DONICO_VERSION={{ .Version }}
+    platforms:
+      - os: linux
+        arch: amd64
+        strategy: docker
+        static: true
+      - os: linux
+        arch: arm64
+        strategy: docker
+        static: true
+      - os: darwin
+        arch: arm64
+        strategy: native
+      - os: darwin
+        arch: amd64
+        strategy: native
+    # No docker section: the linux binaries are built in the image
+    # crystalreleaser generates, alpine:3.24 with Alpine's own Crystal and the
+    # static libraries the stdlib links, never in a third-party Crystal image.
+    # The darwin binaries need no static_libs: the Crystal that mise installs
+    # embeds libgc, pcre2 and libyaml, and donico does no TLS, so they only
+    # load /usr/lib/libSystem and libiconv.
+
+# The binary embeds its third-party notices (licenses/), which must be
+# assembled before compiling. Before hooks run on every runner of a split
+# build, and not during the merge.
+before:
+  hooks:
+    - bash scripts/harvest-licenses.sh
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude: ["^docs:", "^test:", "^chore:", "Merge pull request"]
+  groups:
+    - title: Features
+      regexp: '^feat(\(.+\))?!?:'
+    - title: Bug fixes
+      regexp: '^fix(\(.+\))?!?:'
+    - title: Others
+
+release:
+  github:
+    owner: jbox-web
+    name: donico
+  prerelease: auto
+  replace_existing_artifacts: true
+
+nfpms:
+  - id: packages
+    package_name: donico
+    formats: [deb, rpm]
+    vendor: jbox-web
+    homepage: https://github.com/jbox-web/donico
+    maintainer: Nicolas Rodriguez <nico@nicoladmin.fr>
+    description: |
+      Build, test, push and clean Docker images from a donico.yml
+      Turns one donico.yml into docker buildx bake files and a matrix of
+      build, test, push, clean and login tasks, locally and in CI.
+    license: MIT
+    bindir: /usr/bin
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/donico/LICENSE
+
+brews:
+  - name: donico
+    repository:
+      owner: jbox-web
+      name: homebrew-tap
+      branch: master
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    # A pre-release (v3.1.0-rc.1) is published on GitHub as one, `prerelease:
+    # auto` above; without this the formula would still be pushed, and a plain
+    # `brew upgrade` would install the release candidate.
+    skip_upload: auto
+    homepage: https://github.com/jbox-web/donico
+    description: Build, test, push and clean Docker images from a donico.yml
+    license: MIT
+    install: |
+      bin.install "donico"
+    test: |
+      system bin/"donico", "--version"
+
+aqua:
+  - repository:
+      owner: jbox-web
+      name: aqua-registry
+      branch: master
+      token: "{{ .Env.AQUA_REGISTRY_TOKEN }}"
+    path: pkgs/jbox-web/donico/registry.yaml
+    # As for the formula: not for a pre-release.
+    skip_upload: auto
+    description: Build, test, push and clean Docker images from a donico.yml

@@ -1,0 +1,24 @@
+name: donico
+
+version: 3.0.0
+
+crystal: ">= 1.20.0"
+
+license: MIT
+
+authors:
+  - Nicolas Rodriguez <nico@nicoladmin.fr>
+
+description: |
+  Builds, tests, pushes and cleans Docker images from a single donico.yml,
+  locally and in GitLab CI.
+
+repository: https://github.com/jbox-web/donico
+
+targets:
+  donico:
+    main: src/donico.cr
+
+# Zero dependencies: the stdlib only. Anything added under `dependencies:`
+# would break that contract and must be discussed first. ameba is a mise tool
+# (see mise.toml), not a development_dependency.

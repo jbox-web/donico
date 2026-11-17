@@ -1,0 +1,6 @@
+#!/usr/bin/env perl
+# Starts the command as the leader of a new process group: Crystal's Process
+# cannot create one, and a spec needs a group of its own to signal as a
+# terminal would on Ctrl-C without reaching the spec runner itself.
+setpgrp;
+exec @ARGV;

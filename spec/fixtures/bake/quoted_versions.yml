@@ -1,0 +1,11 @@
+---
+registry: registry.example.net/images/base
+image_name: foo
+image_builder: bake
+matrix:
+  - version: "0.17"
+    distro: trixie
+  - version: "18"
+    distro: trixie
+  - version: "1.31.8"
+    distro: trixie
