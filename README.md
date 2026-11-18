@@ -62,7 +62,7 @@ archive of the platform itself. In a `mise.toml`:
 
 ```toml
 [tools]
-"github:jbox-web/donico" = "3.1.0"
+"github:jbox-web/donico" = "3.2.0"
 ```
 
 Or through [aqua](https://aquaproj.github.io), with the jbox-web registry
@@ -73,11 +73,8 @@ configured:
 aqua.registries = ["https://github.com/jbox-web/aqua-registry"]
 
 [tools]
-"aqua:jbox-web/donico" = "3.1.0"
+"aqua:jbox-web/donico" = "3.2.0"
 ```
-
-The versions above predate the fleet commands: the `donico-manager` link
-ships from the release whose CHANGELOG entry lists them.
 
 From source (Crystal >= 1.20):
 
@@ -87,7 +84,7 @@ mise dev:build          # bin/donico
 ```
 
 Check the install with `donico --version`, which prints the version, the commit
-and the platform: `donico 3.1.0 (<commit>, linux/amd64)`. `donico-manager
+and the platform: `donico 3.2.0 (<commit>, linux/amd64)`. `donico-manager
 --version` prints the same under its second name. A build from source has the
 link too: `mise dev:build` writes `bin/donico-manager` beside `bin/donico`.
 
@@ -227,7 +224,7 @@ The image built locally is tagged `<name>/<version>/<distro>:<timestamp>`
 | Task | What it does |
 |---|---|
 | `help` | Lists the tasks with their description, one per line, sorted by name. Also what plain `donico` runs. It needs a `donico.yml`; `donico --help` does not. |
-| `version` | Prints the bare version (`3.1.0`). `donico --version` prints the one-line form with the commit and the platform. |
+| `version` | Prints the bare version (`3.2.0`). `donico --version` prints the one-line form with the commit and the platform. |
 | `licenses` | Prints the third-party notices embedded in the binary. |
 | `image-builder` | Prints the image builder, `bake` or `debuerreotype`, alone on one line. |
 | `generate-files` | Writes `.gitlab-ci/extends/.matrix.yml` and `docker-bake.hcl` (both are rendered before either is written). With `image_builder: debuerreotype`, the matrix file alone. |
