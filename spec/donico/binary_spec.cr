@@ -54,29 +54,46 @@ end
 private NEW_SESSION = File.expand_path(File.join(__DIR__, "..", "fixtures", "bin", "new-session"))
 
 # A fake docker that logs each call's arguments. The container start prints an
-# id; the Inspec call records its pid, then becomes a 30 second sleep.
+# id; the Inspec call records its pid, then becomes a 30 second sleep, and so
+# does the build container of the debuerreotype backend.
 private FAKE_DOCKER_SLEEPING = <<-SH
   #!/bin/sh
   echo "$*" >> "$DOCKER_LOG"
   case "$*" in
     "run --rm -d "*) echo cid42 ;;
     "run --rm --mount "*) echo $$ > "$DOCKER_PIDS"; exec sleep 30 ;;
+    "run --hostname debuerreotype "*) echo $$ > "$DOCKER_PIDS"; exec sleep 30 ;;
   esac
   SH
 
-# How a signal reaches the binary in `send_to_inspec_run`.
+# Two archs, so that an interrupted build has a second container not to start.
+private YAML_ROOTFS = <<-YAML
+  registry: registry.example.net/debian
+  image_builder: debuerreotype
+  matrix:
+    - distro: trixie
+      version: "13"
+      archs: ["linux/amd64", "linux/arm64"]
+  YAML
+
+# How a signal reaches the binary in `send_to_sleeping_docker`.
 private enum Target
   ProcessGroup
   BinaryAlone
 end
 
-# Starts `donico inspec donico img` in a new process group, waits (at most
-# five seconds) until the fake docker is sleeping in the Inspec call, sends
-# the signal, then waits (at most five seconds) for the binary to end. Returns
-# its exit status, the docker log and the seconds between signal and exit. No
-# process survives, whatever the outcome: the sleep and the whole group are
-# killed afterwards.
 private def send_to_inspec_run(signal : Signal, target : Target) : {Int32?, Array(String), Float64}
+  send_to_sleeping_docker(signal, target, YAML_TRIXIE, ["inspec", "donico", "img"])
+end
+
+# Starts `donico <args>` in a new process group, in a project holding `yaml`
+# and `files`, waits (at most five seconds) until the fake docker is sleeping
+# (in the Inspec call, or as a build container), sends the signal, then waits
+# (at most five seconds) for the binary to end. Returns its exit status, the
+# docker log and the seconds between signal and exit. No process survives,
+# whatever the outcome: the sleep and the whole group are killed afterwards.
+private def send_to_sleeping_docker(signal : Signal, target : Target, yaml : String, args : Array(String),
+                                    files : Hash(String, String) = {} of String => String) : {Int32?, Array(String), Float64}
   root = File.join(Dir.tempdir, "donico-signal-#{Process.pid}-#{Random::Secure.hex(4)}")
   fake_dir = File.join(root, "fake")
   project = File.join(root, "project")
@@ -87,9 +104,13 @@ private def send_to_inspec_run(signal : Signal, target : Target) : {Int32?, Arra
   begin
     File.write(File.join(fake_dir, "docker"), FAKE_DOCKER_SLEEPING)
     File.chmod(File.join(fake_dir, "docker"), 0o755)
-    File.write(File.join(project, "donico.yml"), YAML_TRIXIE)
+    File.write(File.join(project, "donico.yml"), yaml)
+    files.each do |path, content|
+      Dir.mkdir_p(File.dirname(File.join(project, path)))
+      File.write(File.join(project, path), content)
+    end
     env = {"PATH" => "#{fake_dir}:/usr/bin:/bin", "DOCKER_LOG" => log, "DOCKER_PIDS" => pids}
-    child = Process.new(NEW_SESSION, [BINARY, "inspec", "donico", "img"], env: env, clear_env: true,
+    child = Process.new(NEW_SESSION, [BINARY] + args, env: env, clear_env: true,
       chdir: project, output: IO::Memory.new, error: IO::Memory.new)
     # The one and only waiter of the child. A second `child.wait`, from the
     # cleanup below while this fiber was still blocked in the first, never
@@ -123,7 +144,7 @@ end
 private def wait_for_file(path : String) : Nil
   deadline = Time.instant + 5.seconds
   until File.exists?(path) && !File.read(path).strip.empty?
-    raise "the fake docker never reached the Inspec call" if Time.instant > deadline
+    raise "the fake docker never reached its sleep" if Time.instant > deadline
     sleep 20.milliseconds
   end
 end
@@ -196,6 +217,18 @@ describe "bin/donico", tags: "binary" do
     # The fake sleeps 30 seconds, so ending anywhere under 15 proves the
     # signal was forwarded to it. A tighter bound flaked on a loaded machine:
     # what is measured here is forwarding, not speed.
+    elapsed.should be < 15.0
+  end
+
+  # The build of a root filesystem runs for minutes in a privileged container:
+  # a cancelled CI job must not leave it behind, nor start the next arch.
+  it "stops the build container of the debuerreotype backend on TERM, starts no other arch and exits 143" do
+    sources = {"config/apt/13-trixie.list" => ""}
+    status, log, elapsed = send_to_sleeping_docker(Signal::TERM, Target::BinaryAlone, YAML_ROOTFS, ["trixie:13:build"], sources)
+
+    log.count(&.starts_with?("run --hostname debuerreotype ")).should eq 1
+    log.first.should contain "debuerreotype-init --arch=amd64 "
+    status.should eq 143
     elapsed.should be < 15.0
   end
 end

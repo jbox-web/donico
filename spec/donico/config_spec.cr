@@ -186,7 +186,7 @@ describe Donico::Config do
 
     it "rejects an unknown image_builder" do
       config_error(MINIMAL + "image_builder: kaniko\n").should eq(
-        %(donico.yml: unknown image_builder "kaniko" (supported: bake)))
+        %(donico.yml: unknown image_builder "kaniko" (supported: bake, debuerreotype)))
     end
 
     # Without a name, tags used to render with an empty segment.

@@ -15,11 +15,15 @@ registry: registry.example.com/base
 # may set its own instead.
 image_name: myapp
 
-# The only builder is `bake` (docker buildx bake), which is also the default.
+# `bake` (docker buildx bake), which is also the default and what this file
+# describes. The other builder, `debuerreotype`, builds Debian base images from
+# nothing and has keys of its own: its commented example is in README.md,
+# "Debian root filesystems".
 image_builder: bake
 
-# Where the two tool images are looked for: <tools_registry>/hadolint:latest
-# for `lint-dockerfile`, <tools_registry>/inspec:latest for `test`.
+# Where the tool images are looked for: <tools_registry>/hadolint:latest for
+# `lint-dockerfile`, <tools_registry>/inspec:latest for `test` (and
+# <tools_registry>/debuerreotype:latest for the `debuerreotype` builder).
 # Default: the value of `registry`.
 tools_registry: registry.example.com/tools
 

@@ -28,6 +28,10 @@ What it does for a repository of images:
 - **Lints** the Dockerfiles with hadolint, **cleans** the local build tag and
   opens a **login** shell in an image.
 
+A second backend, `image_builder: debuerreotype`, builds the Debian base images
+themselves, from nothing: see
+[Debian root filesystems](#debian-root-filesystems-image_builder-debuerreotype).
+
 ## Installation
 
 From a release (the Linux binaries are static):
@@ -44,7 +48,7 @@ From a release (the Linux binaries are static):
 aqua.registries = ["https://github.com/jbox-web/aqua-registry"]
 
 [tools]
-"aqua:jbox-web/donico" = "3.0.0"
+"aqua:jbox-web/donico" = "3.1.0"
 ```
 
 From source (Crystal >= 1.20):
@@ -55,7 +59,7 @@ mise dev:build          # bin/donico
 ```
 
 Check the install with `donico --version`, which prints the version, the commit
-and the platform: `donico 3.0.0 (<commit>, linux/amd64)`.
+and the platform: `donico 3.1.0 (<commit>, linux/amd64)`.
 
 ## Quick start
 
@@ -193,10 +197,10 @@ The image built locally is tagged `<name>/<version>/<distro>:<timestamp>`
 | Task | What it does |
 |---|---|
 | `help` | Lists the tasks with their description, one per line, sorted by name. Also what plain `donico` runs. It needs a `donico.yml`; `donico --help` does not. |
-| `version` | Prints the bare version (`3.0.0`). `donico --version` prints the one-line form with the commit and the platform. |
+| `version` | Prints the bare version (`3.1.0`). `donico --version` prints the one-line form with the commit and the platform. |
 | `licenses` | Prints the third-party notices embedded in the binary. |
-| `image-builder` | Prints the image builder, `bake`, alone on one line. |
-| `generate-files` | Writes `.gitlab-ci/extends/.matrix.yml` and `docker-bake.hcl` (both are rendered before either is written). |
+| `image-builder` | Prints the image builder, `bake` or `debuerreotype`, alone on one line. |
+| `generate-files` | Writes `.gitlab-ci/extends/.matrix.yml` and `docker-bake.hcl` (both are rendered before either is written). With `image_builder: debuerreotype`, the matrix file alone. |
 | `matrix` | Prints the resolved matrix as JSON on stdout (see [donico matrix](#donico-matrix)). |
 | `lint-dockerfile` | Runs hadolint, in the linter image, on every distinct Dockerfile of the matrix. Prints what hadolint printed (stdout and stderr, in the order written) and exits 1 if any run failed; prints `Dockerfile is OK!` and exits 0 otherwise. Every Dockerfile is linted even after a failure. |
 | `<distro>:<version>:build` | Checks the secrets, then replaces itself with `docker buildx bake <distro>-<version>-build`. `BUILD_DATE` is added to the inherited environment, where the bakefile reads it; the other build args are written in the bakefile and are not exported. |
@@ -205,6 +209,11 @@ The image built locally is tagged `<name>/<version>/<distro>:<timestamp>`
 | `<distro>:<version>:clean` | Runs `docker rmi <build tag>`. On failure, prints what docker said and exits 1. |
 | `<distro>:<version>:login` | Replaces itself with `docker run -it --rm <build tag> /bin/bash`, plus one `-e NAME` per `login_env` entry. |
 | `inspec <mode> <image> [inputs...]` | The InSpec harness called directly (see [donico inspec](#donico-inspec)). |
+
+The five row tasks above are those of the `bake` backend. With
+`image_builder: debuerreotype` a row has three, `build`, `push` and `clean`,
+which do something else under the same names: see
+[Debian root filesystems](#debian-root-filesystems-image_builder-debuerreotype).
 
 An unknown task, or a `<distro>:<version>` pair that is not in the matrix, exits
 1 with the name and the list of the valid tasks. A task name is split on its
@@ -250,15 +259,17 @@ matrix:
 |---|---|---|
 | `registry` | none, **required** | Registry path the production tags are prefixed with: `<registry>/<name>:<tag>`. |
 | `image_name` | none | Image name: letters, digits, `.`, `_`, `-` and `/`. May be left out when every matrix row sets its own. |
-| `image_builder` | `bake` | The only supported value is `bake`. `docker` is refused with a message of its own. |
+| `image_builder` | `bake` | `bake`, or `debuerreotype` for [Debian root filesystems](#debian-root-filesystems-image_builder-debuerreotype), which has its own keys and ignores `image_name` and the bake row keys. `docker` is refused with a message of its own. |
 | `matrix` | one row, every default | List of rows (below). |
-| `tools_registry` | the value of `registry` | Where the tool images (hadolint, InSpec) are looked for. |
+| `tools_registry` | the value of `registry` | Where the tool images (hadolint, InSpec, and debuerreotype for that backend) are looked for. |
 | `docker_linter` | `<tools_registry>/hadolint:latest` | The full image run by `lint-dockerfile`. |
 | `inspec_image` | `<tools_registry>/inspec:latest` | The full image run by the InSpec harness. |
 
 A key written with an empty string (`registry: ""`) counts as not set.
 
 ### Matrix row keys
+
+These are the row keys of the `bake` backend.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -300,8 +311,9 @@ row with every default.
 
 ### Tool images
 
-Two images are run besides your own: the Dockerfile linter and InSpec. For each,
-the first match wins:
+Two images are run besides your own: the Dockerfile linter and InSpec (the
+debuerreotype backend has a third one, resolved the same way from
+`debuerreotype_image`). For each, the first match wins:
 
 1. the explicit key: `docker_linter`, `inspec_image`;
 2. `<tools_registry>/hadolint:latest`, `<tools_registry>/inspec:latest`, where
@@ -534,6 +546,293 @@ the container is being removed can stop that command, and the container, which
 runs until it is killed, is then left behind. `docker ps` shows it; `docker
 kill <id>` removes it.
 
+## Debian root filesystems: `image_builder: debuerreotype`
+
+The `bake` backend builds images *from* a base image. This one builds the base
+images themselves: a Debian root filesystem made by
+[debuerreotype](https://github.com/debuerreotype/debuerreotype), once per
+architecture, each one packed as a tarball; the tarballs are then assembled into
+one multi-arch image, `<registry>/<distro>`, and pushed. It replaces "danico",
+the Rakefile that used to do this (see [Coming from danico](#coming-from-danico)).
+
+The recipe, that is the list of debuerreotype commands, is part of the binary:
+the repository holds no script. It holds:
+
+- `donico.yml`;
+- `config/apt/<version>-<distro>.list`, the `sources.list` of the image, one per
+  row (`config/apt/13-trixie.list`), and `config/apt/apt-no-check` when a row
+  is `eol`;
+- an empty `build/` directory, where the tarballs are written (ignore its
+  content in git; donico creates it when it is missing);
+- the `Dockerfile` that turns the tarballs into an image:
+
+```dockerfile
+FROM scratch
+ARG DISTRO
+ARG TARGETARCH
+ARG BUILD_TIMESTAMP
+ADD build/${DISTRO}-${TARGETARCH}-${BUILD_TIMESTAMP}.tar /
+CMD ["bash"]
+```
+
+<!-- donico.yml debuerreotype -->
+```yaml
+registry: registry.example.com/debian
+image_builder: debuerreotype
+tools_registry: registry.example.com/tools
+apt_proxy: http://apt-proxy.example.com:3142
+matrix:
+  - distro: trixie
+    version: "13"
+    archs: [linux/amd64, linux/arm64]
+  - distro: bookworm
+    version: "12"
+    archs: [linux/amd64, linux/arm64]
+```
+
+`donico help` lists three tasks per row:
+
+<!-- help debuerreotype -->
+```
+Usage:
+
+  donico bookworm:12:build  # Build root filesystem for bookworm/12 ["linux/amd64", "linux/arm64"]
+  donico bookworm:12:clean  # Clean root filesystem for bookworm/12 ["linux/amd64", "linux/arm64"]
+  donico bookworm:12:push   # Push docker image for bookworm/12 ["linux/amd64", "linux/arm64"]
+  donico generate-files     # Generate GitlabCI matrix
+  donico image-builder      # Print the configured image builder
+  donico inspec             # Run the Inspec harness on an image
+  donico licenses           # Print the third-party notices embedded in this binary
+  donico lint-dockerfile    # Lint Dockerfile
+  donico matrix             # Print the resolved matrix as JSON
+  donico trixie:13:build    # Build root filesystem for trixie/13 ["linux/amd64", "linux/arm64"]
+  donico trixie:13:clean    # Clean root filesystem for trixie/13 ["linux/amd64", "linux/arm64"]
+  donico trixie:13:push     # Push docker image for trixie/13 ["linux/amd64", "linux/arm64"]
+  donico version            # Version
+```
+
+There is no `test` and no `login`: the image is pushed straight from the
+tarballs and never exists in the local docker.
+
+### The three tasks
+
+| Task | What it does |
+|---|---|
+| `<distro>:<version>:build` | For each arch, in the order of `archs`, runs the build script in a container of the debuerreotype image (the command is below). The first arch that fails ends the task with the exit status of its `docker run`. Before any container starts, it checks that the files the script copies exist (`config/apt/<version>-<distro>.list`, and `config/apt/apt-no-check` for an `eol` row), that no build directory of the row and the timestamp is left from an earlier build (debuerreotype refuses one: run `clean` first), and creates `build/` if needed. INT and TERM are passed on to the running `docker run`, no further arch is started and the task exits with 128 + the signal number. |
+| `<distro>:<version>:push` | Checks that the tarball of every arch is there, reads `etc/debian_version` from the tarball of the first arch (`tar -O -xf`), then replaces itself with `docker buildx build`, which pushes the image under four tags (below). A missing tarball is a one-line error naming the file and the `build` task; a tarball whose `etc/debian_version` is not a release number (`trixie/sid` on testing) is refused. |
+| `<distro>:<version>:clean` | Removes from `build/` every directory and tarball named `<distro>-<arch>-*`, for each arch of the row, whatever the timestamp. The files belong to root (they were written in the build container), so it runs `sudo rm -rf <paths>`, or `rm -rf <paths>` when donico itself runs as root. |
+
+`build` runs, for each arch:
+
+```sh
+docker run --hostname debuerreotype --init --interactive --rm --pull always \
+  --cap-add SYS_ADMIN --cap-drop SETFCAP --security-opt apparmor=unconfined \
+  --tmpfs /tmp:dev,exec,suid,noatime --env TMPDIR=/tmp --workdir /workdir \
+  --mount type=bind,src=<project>/build,dst=/workdir \
+  --mount type=bind,src=<project>/config,dst=/config \
+  <debuerreotype image> bash -euc '<script>'
+```
+
+where `<script>` is the recipe rendered for the row and the arch, its commands
+joined by `;`. For `trixie` on `linux/amd64` in the example above, run on
+2026-11-18, these are the commands, one per line here:
+
+<!-- script debuerreotype -->
+```sh
+export http_proxy=http://apt-proxy.example.com:3142
+debuerreotype-init --arch=amd64 --debian --non-debian trixie-amd64-20261117 trixie http://deb.debian.org/debian
+debuerreotype-chroot trixie-amd64-20261117 groupadd --gid 65532 nonroot
+debuerreotype-chroot trixie-amd64-20261117 useradd --uid 65532 --gid 65532 --home-dir /home/nonroot --shell /bin/bash --create-home nonroot
+debuerreotype-chroot trixie-amd64-20261117 mkdir /app
+debuerreotype-chroot trixie-amd64-20261117 chown -R nonroot.nonroot /app
+debuerreotype-minimizing-config trixie-amd64-20261117
+cp --verbose /config/apt/13-trixie.list trixie-amd64-20261117/etc/apt/sources.list
+debuerreotype-apt-get trixie-amd64-20261117 -o Acquire::http::Proxy=http://apt-proxy.example.com:3142 update
+debuerreotype-apt-get trixie-amd64-20261117 -o Acquire::http::Proxy=http://apt-proxy.example.com:3142 dist-upgrade -y
+rm -f trixie-amd64-20261117/etc/apt/sources.list.d/*
+debuerreotype-slimify trixie-amd64-20261117
+debuerreotype-chroot trixie-amd64-20261117 find /var/log -type f -delete
+debuerreotype-tar trixie-amd64-20261117 trixie-amd64-20261117.tar
+sha256sum trixie-amd64-20261117.tar
+ls -hal
+```
+
+The image gets a `nonroot` user and group (65532) and an `/app` directory owned
+by it. Without a proxy in use, the `export` line is absent and the two
+`debuerreotype-apt-get` lines lose their `-o` option. An `eol` row adds, after
+the `chown`:
+
+```sh
+debuerreotype-gpgv-ignore-expiration-config <build dir>
+cp --verbose /config/apt/apt-no-check <build dir>/etc/apt/apt.conf.d/
+```
+
+`push` runs, with `13.2` read from the tarball:
+
+```sh
+docker buildx build --no-cache --platform linux/amd64,linux/arm64 \
+  --build-arg DISTRO=trixie --build-arg BUILD_TIMESTAMP=20261117 \
+  -t registry.example.com/debian/trixie:latest \
+  -t registry.example.com/debian/trixie:13 \
+  -t registry.example.com/debian/trixie:13.2 \
+  -t registry.example.com/debian/trixie:20261117 \
+  -o type=registry .
+```
+
+The tags are `latest`, the Debian major, the full Debian version and the
+timestamp. The major is the one of the tarball, not the row's `version`. The
+builder must be able to build every platform of the row (QEMU, a
+`docker buildx create` builder): donico does not set it up.
+
+### Keys of this backend
+
+At the top level, besides `registry` (required) and `tools_registry`:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `apt_proxy` | none | HTTP proxy the build goes through, for debootstrap and for apt. Used when set, unless `ENABLE_APT_PROXY` is `false` (process environment or `.env`). |
+| `debuerreotype_image` | `<tools_registry>/debuerreotype:latest` | The full image the build runs in. It holds the debuerreotype scripts. |
+
+In a matrix row:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `distro` | none, **required** | The Debian codename (`trixie`): lower-case letters and digits. It names the image, the build directories and the tarballs, so a distro is given once: two rows of one distro are refused. |
+| `version` | none, **required** | The Debian major, as a **quoted string** (`"13"`). It names the row with `distro` (`trixie:13`) and the APT sources file, `config/apt/<version>-<distro>.list`. |
+| `archs` | `["linux/amd64"]` | Platforms, each one once, among `linux/amd64`, `linux/arm64`, `linux/386`, `linux/ppc64le`, `linux/s390x`, `linux/riscv64` and `linux/mips64le`. The part after the slash names the build directory and the tarball; debootstrap is given the Debian name of the architecture (`i386` for `386`, `ppc64el` for `ppc64le`, `mips64el` for `mips64le`). `linux/arm` is not supported. |
+| `eol` | `false` | `true` for a distribution that left the mirrors: expired signatures are accepted (see the two commands above). |
+| `debootstrap_url` | `http://deb.debian.org/debian` | The mirror debootstrap installs from (`http://archive.debian.org/debian` for an `eol` row). |
+| `debootstrap_opts` | `["--debian"]` | Options of `debuerreotype-init`, a list of strings. |
+| `timestamp` | the day before the run (under GitLab CI, before the creation of the pipeline), `%Y%m%d` | A **quoted string** that is a valid docker tag: letters, digits, `.`, `_` and `-`, not starting with `.` or `-`, 128 characters at most. It is a tag of the image and a part of the name of the tarballs. |
+
+`matrix` is required. `image_name` and the row keys of the `bake` backend
+(`tags`, `build_args`, `dockerfile`...) are ignored, like any key donico does not
+know; so are the keys above under `bake`.
+
+`apt_proxy`, `debootstrap_url` and each item of `debootstrap_opts` are written
+into the script bash runs, so they only hold letters, digits and
+`_ @ % + = : , . / -`: a space, a quote, a `;` or a `$` is refused when the file
+loads. `build` logs the command it runs, script included: a proxy or a mirror
+URL that carries credentials shows in the build log and in the process list of
+the host.
+
+The default timestamp is the day before the task runs: `build` and `push` agree
+on the tarballs as long as they run on the same day. Under GitLab CI they are
+two jobs, which midnight may separate: when `CI_PIPELINE_CREATED_AT` is set and
+not empty, the day is the one the pipeline was created on, in the offset of
+that value (`2026-11-17T23:50:00+01:00` gives `20261116`), so every job of a
+pipeline uses the same timestamp. `CI_COMMIT_TIMESTAMP` is not read by this
+backend.
+
+### Generated file and `matrix`
+
+`generate-files` writes `.gitlab-ci/extends/.matrix.yml` and nothing else:
+
+<!-- .matrix.yml debuerreotype -->
+```yaml
+# !!! THIS IS A GENERATED FILE !!! DON'T EDIT ME MANUALLY !!!
+# Instead edit donico.yml and run donico generate-files
+---
+".matrix":
+  parallel:
+    matrix:
+    - VERSION: '13'
+      DOCKER_DISTRO: trixie
+    - VERSION: '12'
+      DOCKER_DISTRO: bookworm
+```
+
+so a CI job calls `donico "$DOCKER_DISTRO:$VERSION:build"`, as for any other
+image repository. `donico matrix` prints, for the same example on 2026-11-18:
+
+<!-- matrix.json debuerreotype -->
+```json
+[
+  {
+    "distro": "trixie",
+    "version": "13",
+    "archs": [
+      "linux/amd64",
+      "linux/arm64"
+    ],
+    "eol": false,
+    "debootstrap_opts": [
+      "--debian"
+    ],
+    "timestamp": "20261117",
+    "image": "registry.example.com/debian/trixie",
+    "tarballs": [
+      "build/trixie-amd64-20261117.tar",
+      "build/trixie-arm64-20261117.tar"
+    ]
+  },
+  {
+    "distro": "bookworm",
+    "version": "12",
+    "archs": [
+      "linux/amd64",
+      "linux/arm64"
+    ],
+    "eol": false,
+    "debootstrap_opts": [
+      "--debian"
+    ],
+    "timestamp": "20261117",
+    "image": "registry.example.com/debian/bookworm",
+    "tarballs": [
+      "build/bookworm-amd64-20261117.tar",
+      "build/bookworm-arm64-20261117.tar"
+    ]
+  }
+]
+```
+
+Neither the proxy nor the debootstrap mirror is printed: either URL may carry
+credentials.
+
+### Coming from danico
+
+For the same row and the same arch, the build script is the one danico rendered
+from `templates/debian-build.erb`, byte for byte, and the `docker run` and
+`docker buildx build` command lines are those of its `bin/build` and
+`bin/push`. What changes in a repository:
+
+1. **`danico.yml` becomes `donico.yml`**, with `image_builder: debuerreotype`
+   added.
+2. **`version` is quoted** (`"13"`), and **`archs` are platforms**
+   (`linux/amd64` where danico had `amd64`). An explicit `timestamp` is quoted
+   too.
+3. **Task names are donico's**: `<distro>:<version>:build`, `:push` and
+   `:clean`, where danico had `<distro>:build`. The per-arch tasks
+   (`<distro>:<arch>:build`) are gone: `build` and `clean` always cover every
+   arch of the row.
+4. **`rake generate_matrix` becomes `donico generate-files`**, and the rows of
+   `.matrix.yml` gain `VERSION`.
+5. **The proxy follows `apt_proxy`.** It is used when the key is set, unless
+   `ENABLE_APT_PROXY=false`. danico used it when `ENABLE_APT_PROXY` was
+   `true`, which was the default in one fleet and not in the other, and with
+   the variable `true` and no `apt_proxy` it exported an empty `http_proxy`. A
+   repository that keeps `apt_proxy` and does not want the proxy sets
+   `ENABLE_APT_PROXY=false`, or removes the key.
+6. **`debuerreotype_image` defaults to `<tools_registry>/debuerreotype:latest`**
+   instead of `debuerreotype/debuerreotype:0.12` on Docker Hub: no registry
+   host is built into donico.
+7. **The default timestamp follows the pipeline under GitLab CI**: the day
+   before `CI_PIPELINE_CREATED_AT`, so that `build` and `push` agree when
+   midnight falls between them. danico took the day before each job ran.
+8. **`push` reads the Debian version from the tarball of the first arch** of
+   the row, where danico read the `amd64` one whatever the row held, and it
+   checks every tarball before starting.
+9. **`build` returns the exit status of the failed `docker run`**, where rake
+   returned 1. It refuses to start over a build directory left by an earlier
+   build, where danico failed in the container, and it stops its container
+   when it is interrupted.
+10. **Only the platforms listed under `archs` are accepted**, each with its
+    Debian name; danico took any name and translated `386` alone.
+11. **Delete** `Rakefile`, `Gemfile`, `Gemfile.lock`, `bin/rake`, `bin/build`,
+    `bin/push`, `bin/clean` and `templates/debian-build.erb`. Keep the
+    `Dockerfile`, `config/apt/` and `build/.gitkeep`.
+
 ## `donico matrix`
 
 Prints the resolved matrix as JSON: one object per row, with everything donico
@@ -582,6 +881,9 @@ start (with `CI_COMMIT_TIMESTAMP=2026-11-17T09:30:00+01:00`):
 `prod_tags` are the values described in [Derived values](#derived-values);
 `build_target` and `push_target` are the bake targets.
 
+With `image_builder: debuerreotype` the rows have other fields: see
+[Generated file and `matrix`](#generated-file-and-matrix).
+
 ## `donico inspec`
 
 ```
@@ -607,8 +909,10 @@ donico inspec donico myapp/1.0/bookworm:20261117093000 -- -odd=value
 |---|---|
 | `CI_COMMIT_TIMESTAMP` | ISO 8601 timestamp that replaces the current date in the build tag and the `BUILD_DATE` arg (see [Derived values](#derived-values)). Unset or empty counts as unset; anything else that is not ISO 8601 is an error. |
 | `DONICO_QUIET` | When set, to any value, the `exec: ...` log lines are not printed. |
+| `ENABLE_APT_PROXY` | With `image_builder: debuerreotype`, `false` builds without the `apt_proxy` of `donico.yml`. Any other value, or none, leaves the proxy in use. |
+| `CI_PIPELINE_CREATED_AT` | With `image_builder: debuerreotype`, the ISO 8601 time the default `timestamp` of a row is the day before, instead of the current date. Unset or empty counts as unset; anything else that is not ISO 8601 is an error. |
 
-`.env` can set both. Variables named by `secret_envs` and `login_env` are read
+`.env` can set all four. Variables named by `secret_envs` and `login_env` are read
 from the environment of the docker call, and `BUILD_DATE` is written to it by
 `build` and `push`: none of them is put on a command line.
 
@@ -627,7 +931,9 @@ is worth reporting.
 Otherwise the exit status is that of the command donico ran: docker's for
 `build`, `push` and `login` (donico is replaced by it), 1 for `clean` and
 `lint-dockerfile` when docker failed, and the status of the
-[harness](#exit-status-of-test) for `test`.
+[harness](#exit-status-of-test) for `test`. With `image_builder: debuerreotype`:
+the status of the first `docker run` that failed for `build` (128 + the signal
+number when it was interrupted), docker's for `push` (donico is replaced by it), and that of `rm` or `sudo` for `clean`.
 
 ## Coming from the Ruby gem
 
@@ -735,7 +1041,8 @@ to be skipped (see the Brewfile). The specs check this README: each
 `Config.load` and checked against what the text around it announces, each `.env`
 example is parsed, and the listing, the `.matrix.yml`, the `docker-bake.hcl` and
 the JSON of the quick start are compared with what the binary generates from
-the quick-start `donico.yml`.
+the quick-start `donico.yml`. The example of the debuerreotype section is
+checked the same way, build script included.
 
 The comparison with the Ruby gem is done by two scripts that run both on local
 clones of the image repositories; see [scripts/oracle/README.md](scripts/oracle/README.md).

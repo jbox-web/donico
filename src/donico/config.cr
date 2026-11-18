@@ -51,10 +51,14 @@ module Donico
     end
   end
 
-  # The loaded and validated donico.yml of a project. Only the bake backend
-  # exists, so `image_builder` is always "bake".
+  # The loaded and validated donico.yml of a project. `image_builder` names
+  # the backend: "bake" (images built from a Dockerfile by `docker buildx
+  # bake`) or "debuerreotype" (Debian root filesystems built by debuerreotype,
+  # see Rootfs). Each backend validates its own keys and ignores the other's.
   class Config
     FILE = "donico.yml"
+
+    BUILDERS = %w[bake debuerreotype]
 
     # Macros usable in a tag. bake resolves the platform list itself, so no
     # single arch exists when its tags are built.
@@ -67,6 +71,10 @@ module Donico
     getter tools_registry : String
     getter docker_linter : String?
     getter inspec_image : String?
+
+    # The two top-level keys of the debuerreotype backend, nil under bake.
+    getter apt_proxy : String?
+    getter debuerreotype_image : String?
 
     def self.load(env : Env) : Config
       path = File.join(env.dir, FILE)
@@ -103,18 +111,54 @@ module Donico
 
     protected def initialize(raw : Hash(YAML::Any, YAML::Any), @env : Env)
       @registry = string(raw, "registry") || raise ConfigError.new("#{FILE}: missing required key: registry")
-      @image_name = image_name_of(raw)
       @image_builder = image_builder_of(raw)
+      @image_name = debuerreotype? ? nil : image_name_of(raw)
       @matrix = matrix_of(raw)
       @tools_registry = string(raw, "tools_registry") || @registry
       @docker_linter = string(raw, "docker_linter")
       @inspec_image = string(raw, "inspec_image")
+      @apt_proxy = debuerreotype? ? apt_proxy_of(raw) : nil
+      @debuerreotype_image = debuerreotype? ? string(raw, "debuerreotype_image") : nil
       @timestamp = nil.as(String?)
 
-      validate_image_names
-      validate_tags
-      validate_unique_rows
-      validate_reserved_args
+      if debuerreotype?
+        validate_unique_distros
+      else
+        validate_image_names
+        validate_tags
+        validate_unique_rows
+        validate_reserved_args
+      end
+    end
+
+    def debuerreotype? : Bool
+      @image_builder == "debuerreotype"
+    end
+
+    # The default timestamp of a debuerreotype row: the day before the run,
+    # as danico computed it (`Date.today.to_time - 1`, one second before
+    # midnight). `build` and `push` must agree on it, since it names the
+    # tarballs, and they run as two CI jobs that midnight may separate: under
+    # GitLab CI the day is therefore the one the pipeline was created on
+    # (CI_PIPELINE_CREATED_AT, ISO 8601, in its own offset), which every job
+    # of the pipeline shares. Computed on use, not at load: a bad value must
+    # not break the tasks that need no timestamp.
+    def rootfs_timestamp : String
+      (rootfs_day.at_beginning_of_day - 1.second).to_s("%Y%m%d")
+    end
+
+    private def rootfs_day : Time
+      created = @env.vars["CI_PIPELINE_CREATED_AT"]?
+      return @env.now if created.nil? || created.empty?
+      Time.parse_iso8601(created)
+    rescue Time::Format::Error | ArgumentError | Time::Location::InvalidTimezoneOffsetError
+      raise ConfigError.new(%(CI_PIPELINE_CREATED_AT is not an ISO 8601 timestamp: "#{created}"))
+    end
+
+    # The APT proxy the build of a root filesystem goes through: `apt_proxy`,
+    # unless ENABLE_APT_PROXY is "false" (process environment or .env).
+    def build_proxy : String?
+      @apt_proxy unless @env.vars["ENABLE_APT_PROXY"]? == "false"
     end
 
     # CI_COMMIT_TIMESTAMP (ISO 8601) reformatted in its own offset, else the
@@ -163,21 +207,31 @@ module Donico
 
     private def image_builder_of(raw) : String
       builder = string(raw, "image_builder") || "bake"
-      return builder if builder == "bake"
+      return builder if BUILDERS.includes?(builder)
       if builder == "docker"
         raise ConfigError.new(%(#{FILE}: image_builder "docker" is not supported by donico 3, use image_builder: bake))
       end
-      raise ConfigError.new(%(#{FILE}: unknown image_builder "#{builder}" (supported: bake)))
+      raise ConfigError.new(%(#{FILE}: unknown image_builder "#{builder}" (supported: #{BUILDERS.join(", ")})))
     end
 
-    # `matrix` absent means one row with every default.
+    # The proxy is written into the build script, like the values of a row.
+    private def apt_proxy_of(raw) : String?
+      proxy = string(raw, "apt_proxy") || return
+      MatrixEntry.script_word(proxy, "apt_proxy")
+    end
+
+    # `matrix` absent means one row with every default under bake. The
+    # debuerreotype backend has no default distro to build: it needs the list.
     private def matrix_of(raw) : Array(MatrixEntry)
       found = raw[YAML::Any.new("matrix")]?
-      return [MatrixEntry.new({} of YAML::Any => YAML::Any, 0)] if found.nil? || found.raw.nil?
+      if found.nil? || found.raw.nil?
+        raise ConfigError.new("#{FILE}: matrix is required with image_builder: debuerreotype") if debuerreotype?
+        return [MatrixEntry.new({} of YAML::Any => YAML::Any, 0)]
+      end
       rows = found.as_a? || raise ConfigError.new("#{FILE}: matrix must be a list of mappings")
       rows.map_with_index do |row, index|
         mapping = row.as_h? || raise ConfigError.new("#{FILE}: matrix must be a list of mappings")
-        MatrixEntry.new(mapping, index)
+        MatrixEntry.new(mapping, index, rootfs: debuerreotype?)
       end
     end
 
@@ -227,6 +281,19 @@ module Donico
           raise ConfigError.new("#{FILE}: matrix[#{index}] and matrix[#{first}] give the same bake target (#{target})")
         end
         targets[target] = index
+      end
+    end
+
+    # A debuerreotype row gives the image `<registry>/<distro>`, and its build
+    # directories and tarballs are named after the distro: two rows of one
+    # distro would overwrite each other, whatever their versions.
+    private def validate_unique_distros : Nil
+      seen = {} of String => Int32
+      @matrix.each_with_index do |entry, index|
+        if first = seen[entry.distro]?
+          raise ConfigError.new("#{FILE}: matrix[#{index}] and matrix[#{first}] build the same image (#{entry.distro})")
+        end
+        seen[entry.distro] = index
       end
     end
 

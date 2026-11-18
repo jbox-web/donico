@@ -79,7 +79,7 @@ module Donico
     end
 
     def task_prefix : String
-      "#{distro}:#{version}"
+      @entry.task_prefix
     end
 
     # Literal substitution of the three macros Config allows. No format

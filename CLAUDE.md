@@ -12,6 +12,11 @@ statuses must be identical. The deliberate differences are listed in the README
 ("Coming from the Ruby gem") and in `CHANGELOG.md`; anything else that differs
 is a bug.
 
+A second backend, `image_builder: debuerreotype`, builds Debian base images
+from nothing. It was never part of the gem: its contract is "danico", the
+Rakefile of the `debian-base` image repositories (build script and docker
+command lines identical; differences in the README, "Coming from danico").
+
 ## Commands
 
 Always go through `mise`, never `crystal`/`ameba` directly: the compiling
@@ -51,6 +56,9 @@ gives stale results there.
 ## Architecture
 
 The flow is `donico.yml` → `Config` → `Image` (one per matrix row) → a task.
+Under `image_builder: debuerreotype` the row object is a `Rootfs` instead, with
+tasks of its own; everything below about `Image`, bake and InSpec is the `bake`
+backend.
 
 - `src/donico.cr` is the only file that calls `exit`. `CLI#run` returns an exit
   code and writes to injected streams; `dir`, `vars`, `now` and the runner
@@ -86,8 +94,19 @@ The flow is `donico.yml` → `Config` → `Image` (one per matrix row) → a tas
   escapes values but leaves `$` alone) and `MatrixFile` (GitLab CI matrix,
   emitting YAML the way Ruby's Psych does). `GenerateFiles` renders both before
   writing either, through temporary files and renames.
-- `ToolImages` resolves the hadolint and InSpec images from configuration. No
-  registry host is ever built into the binary.
+- `ToolImages` resolves the hadolint, InSpec and debuerreotype images from
+  configuration. No registry host is ever built into the binary.
+- The debuerreotype backend: `Config#debuerreotype?` switches the validation
+  (each backend reads its own keys and ignores the other's; `MatrixEntry` is
+  built with `rootfs: true`). `Rootfs` derives the timestamp (the day before
+  the run, or before `CI_PIPELINE_CREATED_AT`; never `CI_COMMIT_TIMESTAMP`), the build directory and tarball of
+  each arch, the tags and the build script, rendered from `rootfs_script.ecr`.
+  `Tasks::RootfsBuild` runs one `docker run` per arch through `Runner#system`
+  and, like `Inspec`, traps INT/TERM to forward them and return 128 + signal,
+  `Tasks::RootfsPush` reads `etc/debian_version` from a tarball then replaces
+  the process with `docker buildx build`, `Tasks::RootfsClean` removes the
+  leftovers of `build/` through `sudo` unless root. A row has no `test` and no
+  `login`; `generate-files` writes the CI matrix alone.
 - Errors raised on purpose inherit `Donico::Error`; the CLI prints
   `donico: <message>` and returns 1. Anything else is a bug and keeps its
   backtrace.
@@ -102,11 +121,20 @@ The flow is `donico.yml` → `Config` → `Image` (one per matrix row) → a tas
 - **The README is tested.** `spec/donico/readme_spec.cr` loads every fenced
   block preceded by a marker comment (`<!-- donico.yml -->`, `<!-- .env -->`,
   `<!-- help -->`, `<!-- matrix.json -->`, `<!-- .matrix.yml -->`,
-  `<!-- docker-bake.hcl -->`) and compares it with what the code produces.
-  A behaviour change means updating the README in the same change.
+  `<!-- docker-bake.hcl -->`, and the same names followed by ` debuerreotype`,
+  plus `<!-- script debuerreotype -->`, for the section on that backend) and
+  compares it with what the code produces. A behaviour change means updating
+  the README in the same change.
 - **Fixtures come from the gem.** `spec/fixtures/generated/` holds the gem's
   output, not this binary's (see `spec/fixtures/generated/matrix/README.md`).
-  Never regenerate them from `bin/donico`.
+  Never regenerate them from `bin/donico`. Likewise `spec/fixtures/debuerreotype/`
+  holds the build scripts Ruby rendered from danico's ERB template (see its
+  README): `rootfs_script.ecr` follows that template line for line, and a
+  change to the recipe is a deliberate break of that equality.
+- **The debuerreotype build script is shell.** Every value written into it is
+  checked when `donico.yml` loads (`MatrixEntry::SCRIPT_WORD`, and the patterns
+  of `distro`, `version`, `timestamp` and the `DEBIAN_ARCHS` list). A new value in
+  `rootfs_script.ecr` needs the same check.
 - **Oracle scripts** (`scripts/oracle/`, see its README) compare the binary
   with the gem on local clones of private image repositories; they only run on
   the owner's machine. Never add a normalisation filter there to hide a

@@ -12,6 +12,16 @@ require "json"
 #   <!-- .matrix.yml -->  the file `generate-files` writes for the first donico.yml
 #   <!-- docker-bake.hcl --> the file `generate-files` writes for the first donico.yml
 #
+# The section on the debuerreotype backend has its own example, and its own
+# markers for what the binary gives for it, on 2026-11-18:
+#
+#   <!-- donico.yml debuerreotype -->   the donico.yml of that section
+#   <!-- help debuerreotype -->         the output of `donico help`
+#   <!-- .matrix.yml debuerreotype -->  the file `generate-files` writes
+#   <!-- matrix.json debuerreotype -->  the output of `donico matrix`
+#   <!-- script debuerreotype -->       the build script of trixie on amd64,
+#                                       one command per line
+#
 # A block without a marker is a fragment or a shell session and is not loaded.
 private README_PATH = File.join(__DIR__, "..", "..", "README.md")
 
@@ -90,7 +100,68 @@ private YAML_CHECKS = [
   end,
 ]
 
+# The day the debuerreotype section was written: its timestamps are the day
+# before.
+private ROOTFS_NOW = Time.utc(2026, 11, 18, 10, 0, 0)
+
+# Runs the CLI on the README's debuerreotype donico.yml and yields what it
+# printed and the project directory it wrote to.
+private def with_rootfs_example(args : Array(String), & : String, String ->) : Nil
+  with_project(readme_blocks("donico.yml debuerreotype").first, now: ROOTFS_NOW) do |env|
+    stdout = IO::Memory.new
+    code = Donico::CLI.new(stdout, IO::Memory.new, env.dir, env.vars, env.now).run(args)
+    code.should eq(0)
+    yield stdout.to_s, env.dir
+  end
+end
+
 describe "README.md" do
+  describe "the debuerreotype example" do
+    it "is the one donico.yml of its section, with the values its text announces" do
+      blocks = readme_blocks("donico.yml debuerreotype")
+      blocks.size.should eq(1)
+
+      with_project(blocks.first, now: ROOTFS_NOW) do |env|
+        config = Donico::Config.load(env)
+        config.image_builder.should eq("debuerreotype")
+        config.matrix.map { |row| {row.distro, row.version} }.should eq([{"trixie", "13"}, {"bookworm", "12"}])
+        config.build_proxy.should eq("http://apt-proxy.example.com:3142")
+        Donico::ToolImages.from(config).debuerreotype.should eq("registry.example.com/tools/debuerreotype:latest")
+        Donico::Rootfs.all(config).first.tags("13.2").should eq([
+          "registry.example.com/debian/trixie:latest",
+          "registry.example.com/debian/trixie:13",
+          "registry.example.com/debian/trixie:13.2",
+          "registry.example.com/debian/trixie:20261117",
+        ])
+      end
+    end
+
+    it "lists what `donico help` prints" do
+      with_rootfs_example(["help"]) do |stdout, _|
+        stdout.rstrip.should eq(readme_blocks("help debuerreotype").first.rstrip)
+      end
+    end
+
+    it "shows what `donico generate-files` writes" do
+      with_rootfs_example(["generate-files"]) do |_, dir|
+        File.read(File.join(dir, ".gitlab-ci", "extends", ".matrix.yml")).rstrip.should eq(readme_blocks(".matrix.yml debuerreotype").first.rstrip)
+      end
+    end
+
+    it "shows what `donico matrix` prints" do
+      with_rootfs_example(["matrix"]) do |stdout, _|
+        JSON.parse(stdout).should eq(JSON.parse(readme_blocks("matrix.json debuerreotype").first))
+      end
+    end
+
+    it "shows the build script of trixie on amd64, one command per line" do
+      with_project(readme_blocks("donico.yml debuerreotype").first, now: ROOTFS_NOW) do |env|
+        script = Donico::Rootfs.all(Donico::Config.load(env)).first.script("amd64")
+        readme_blocks("script debuerreotype").first.rstrip.should eq(script.split(';').join('\n'))
+      end
+    end
+  end
+
   describe "donico.yml examples" do
     blocks = readme_blocks("donico.yml")
 

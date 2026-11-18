@@ -7,6 +7,7 @@ require "./error"
 require "./image"
 require "./inspec"
 require "./licenses"
+require "./rootfs"
 require "./runner"
 require "./ruby_list"
 require "./tasks/build"
@@ -17,6 +18,9 @@ require "./tasks/lint_dockerfile"
 require "./tasks/login"
 require "./tasks/matrix"
 require "./tasks/push"
+require "./tasks/rootfs_build"
+require "./tasks/rootfs_clean"
+require "./tasks/rootfs_push"
 require "./tasks/test"
 require "./tool_images"
 require "./version"
@@ -78,6 +82,15 @@ module Donico
       "push"  => "Push docker image for",
       "clean" => "Clean docker image for",
       "login" => "Login into docker image for",
+    }
+
+    # The three actions of a row of the debuerreotype backend. It has neither
+    # `test` nor `login`: the image is pushed straight from the tarballs and
+    # never exists in the local docker.
+    ROOTFS_ACTIONS = {
+      "build" => "Build root filesystem for",
+      "push"  => "Push docker image for",
+      "clean" => "Clean root filesystem for",
     }
 
     def initialize(@stdout : IO = STDOUT, @stderr : IO = STDERR, @dir : String = Dir.current,
@@ -251,6 +264,8 @@ module Donico
       distro = task[0...first]
       version = task[(first + 1)...last]
       action = task[(last + 1)..]
+      return dispatch_rootfs_task(task, config, env, distro, version, action) if config.debuerreotype?
+
       image = Image.all(config).find { |candidate| candidate.distro == distro && candidate.version == version }
       raise unknown_task(task, config) unless image
 
@@ -265,17 +280,42 @@ module Donico
       end
     end
 
+    # The same names under the debuerreotype backend, where a row is a root
+    # filesystem and has three actions.
+    private def dispatch_rootfs_task(task : String, config : Config, env : Env, distro : String, version : String, action : String) : Int32
+      rootfs = Rootfs.all(config).find { |candidate| candidate.distro == distro && candidate.version == version }
+      raise unknown_task(task, config) unless rootfs
+
+      runner = runner_for(env)
+      case action
+      when "build" then Tasks::RootfsBuild.new(rootfs, env, runner, ToolImages.from(config).debuerreotype).run
+      when "push"  then Tasks::RootfsPush.new(rootfs, env, runner).run
+      when "clean" then Tasks::RootfsClean.new(rootfs, env, runner).run
+      else              raise unknown_task(task, config)
+      end
+    end
+
     # Every task of the project and its description: the built-ins other than
-    # `help`, then the five actions of each matrix row, sorted by name.
+    # `help`, then the actions of each matrix row (five under bake, three
+    # under debuerreotype), sorted by name.
     private def task_descriptions(config : Config) : Array({String, String})
-      tasks = Builtin.values.reject(&.help?).map { |builtin| {builtin.task_name, builtin.description} }
-      Image.all(config).each do |image|
-        archs = RubyList.render(image.entry.archs)
-        ROW_ACTIONS.each do |action, wording|
-          tasks << {"#{image.task_prefix}:#{action}", "#{wording} #{image.distro}/#{image.version} #{archs}"}
+      tasks = Builtin.values.reject(&.help?).map { |builtin| {builtin.task_name, description_of(builtin, config)} }
+      actions = config.debuerreotype? ? ROOTFS_ACTIONS : ROW_ACTIONS
+      config.matrix.each do |entry|
+        archs = RubyList.render(entry.archs)
+        actions.each do |action, wording|
+          tasks << {"#{entry.task_prefix}:#{action}", "#{wording} #{entry.distro}/#{entry.version} #{archs}"}
         end
       end
       tasks.sort_by { |(name, _)| name }
+    end
+
+    # The description of a built-in in the listing of a project. It is the
+    # one of `--help`, which knows no project, but for `generate-files` under
+    # the debuerreotype backend, which writes no bakefile.
+    private def description_of(builtin : Builtin, config : Config) : String
+      return "Generate GitlabCI matrix" if builtin.generate_files? && config.debuerreotype?
+      builtin.description
     end
 
     # The listing of the gem's `help`, with `donico` where it printed

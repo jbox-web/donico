@@ -1,0 +1,57 @@
+# Set APT proxy
+<% if proxy = @proxy %>
+export http_proxy=<%= proxy %>
+<% end %>
+
+# Run debootstrap
+debuerreotype-init --arch=<%= @arch %> <%= @entry.debootstrap_opts.join(" ") %> --non-debian <%= @build_dir %> <%= @entry.distro %> <%= @entry.debootstrap_url %>
+
+# Create nonroot group
+debuerreotype-chroot <%= @build_dir %> groupadd --gid 65532 nonroot
+
+# Create nonroot user
+debuerreotype-chroot <%= @build_dir %> useradd --uid 65532 --gid 65532 --home-dir /home/nonroot --shell /bin/bash --create-home nonroot
+
+# Create workdir
+debuerreotype-chroot <%= @build_dir %> mkdir /app
+debuerreotype-chroot <%= @build_dir %> chown -R nonroot.nonroot /app
+
+<% if @entry.eol? %>
+# Ignore GPG checks on old distributions
+debuerreotype-gpgv-ignore-expiration-config <%= @build_dir %>
+
+# Ignore apt error:
+# Release file for http://archive.debian.org/debian-security/dists/wheezy/updates/Release is expired (invalid since 1566d 21h 47min 28s). Updates for this repository will not be applied.
+cp --verbose /config/apt/apt-no-check <%= @build_dir %>/etc/apt/apt.conf.d/
+<% end %>
+
+# Apply Docker optimizations
+debuerreotype-minimizing-config <%= @build_dir %>
+
+# Setup Debian repo
+cp --verbose /config/apt/<%= @entry.version %>-<%= @entry.distro %>.list <%= @build_dir %>/etc/apt/sources.list
+
+# Install base packages
+<% if proxy = @proxy %>
+debuerreotype-apt-get <%= @build_dir %> -o Acquire::http::Proxy=<%= proxy %> update
+debuerreotype-apt-get <%= @build_dir %> -o Acquire::http::Proxy=<%= proxy %> dist-upgrade -y
+<% else %>
+debuerreotype-apt-get <%= @build_dir %> update
+debuerreotype-apt-get <%= @build_dir %> dist-upgrade -y
+<% end %>
+
+# Remove Debian repos used during debootstrap (bookworm)
+rm -f <%= @build_dir %>/etc/apt/sources.list.d/*
+
+# Slimify image
+debuerreotype-slimify <%= @build_dir %>
+debuerreotype-chroot <%= @build_dir %> find /var/log -type f -delete
+
+# Generate a tar
+debuerreotype-tar <%= @build_dir %> <%= @build_dir %>.tar
+
+# Calculate checksum
+sha256sum <%= @build_dir %>.tar
+
+# List final directory
+ls -hal

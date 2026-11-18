@@ -31,4 +31,22 @@ describe Donico::ToolImages do
     tools.inspec.should eq "x.example/insp:2"
     tools.docker_linter.should eq "t.example/tools/hadolint:latest"
   end
+
+  describe "the debuerreotype image" do
+    rootfs = "registry: r.example/debian\nimage_builder: debuerreotype\nmatrix:\n  - {distro: trixie, version: \"13\"}\n"
+
+    it "lives under registry by default" do
+      tools_from(rootfs).debuerreotype.should eq "r.example/debian/debuerreotype:latest"
+    end
+
+    it "moves with tools_registry" do
+      tools_from(rootfs + "tools_registry: t.example/tools\n").debuerreotype.should eq "t.example/tools/debuerreotype:latest"
+    end
+
+    it "is debuerreotype_image when the key is set" do
+      tools = tools_from(rootfs + "tools_registry: t.example/tools\ndebuerreotype_image: x.example/base/debuerreotype:0.17\n")
+      tools.debuerreotype.should eq "x.example/base/debuerreotype:0.17"
+      tools.inspec.should eq "t.example/tools/inspec:latest"
+    end
+  end
 end

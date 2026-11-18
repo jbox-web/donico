@@ -10,6 +10,9 @@ module Donico
     # the project directory. Both are rendered before either is written: a
     # value that cannot be rendered then leaves the repository as it was,
     # instead of with a new matrix next to an old bakefile.
+    #
+    # The debuerreotype backend has no bakefile: the CI matrix is written
+    # alone, and a docker-bake.hcl that happens to be there is left as it is.
     class GenerateFiles
       MATRIX_PATH   = ".gitlab-ci/extends/.matrix.yml"
       BAKEFILE_PATH = "docker-bake.hcl"
@@ -19,6 +22,11 @@ module Donico
 
       def run : Int32
         matrix = MatrixFile.render(@config)
+        if @config.debuerreotype?
+          write_all({MATRIX_PATH => matrix})
+          @env.stdout.puts "GitlabCI Matrix file generated"
+          return 0
+        end
         bakefile = Bakefile.render(Image.all(@config))
 
         write_all({MATRIX_PATH => matrix, BAKEFILE_PATH => bakefile})
@@ -27,7 +35,7 @@ module Donico
         0
       end
 
-      # Both files go through a temporary file of their own directory first,
+      # Every file goes through a temporary file of their own directory first,
       # then are renamed into place: a failure while writing leaves every
       # target untouched, and a failure while renaming puts back the targets
       # already replaced. Nothing is announced before all of it succeeded.

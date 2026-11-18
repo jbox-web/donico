@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `image_builder: debuerreotype`, a second backend that builds Debian base
+  images from nothing: a root filesystem made by debuerreotype once per
+  architecture, packed as a tarball, the tarballs assembled into one multi-arch
+  image `<registry>/<distro>`. It replaces "danico" (a Rakefile, `danico.yml`,
+  an ERB template and three shell scripts) in the `debian-base` repositories,
+  which no longer need Ruby.
+  - Tasks `<distro>:<version>:build`, `:push` and `:clean` for each row;
+    neither `test` nor `login`.
+  - The recipe is part of the binary. For the same row and arch, the build
+    script is the one danico rendered from its template, byte for byte, and
+    the `docker run` and `docker buildx build` command lines are those of its
+    scripts.
+  - Top-level keys `apt_proxy` and `debuerreotype_image` (default
+    `<tools_registry>/debuerreotype:latest`); row keys `eol`,
+    `debootstrap_url`, `debootstrap_opts` and `timestamp`.
+  - `ENABLE_APT_PROXY=false` (process environment or `.env`) builds without
+    the configured proxy.
+  - The default timestamp is the day before the run, or before
+    `CI_PIPELINE_CREATED_AT` under GitLab CI, so that the `build` and `push`
+    jobs of one pipeline agree on the tarballs across midnight.
+  - `generate-files` writes the CI matrix alone, `matrix` prints the rows of
+    this backend, `image-builder` prints `debuerreotype`.
+  - Differences from danico, listed in the README ("Coming from danico"):
+    `donico.yml` instead of `danico.yml`, a quoted `version`, `archs` written
+    as platforms (`linux/amd64`), donico's task names, the proxy used whenever
+    `apt_proxy` is set, no Docker Hub default for the debuerreotype image,
+    every tarball checked before a push, a fixed list of platforms, and for
+    `build` the exit status of the failed `docker run`, a refusal to start
+    over a leftover build directory and the container stopped on INT or TERM.
+
 ## [3.0.0] - 2026-11-18
 
 First release of the Crystal rewrite of the Ruby gem. The numbering restarts at
