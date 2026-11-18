@@ -40,8 +40,18 @@ From a release (the Linux binaries are static):
   [GitHub release page](https://github.com/jbox-web/donico/releases), with
   `checksums.txt`;
 - Homebrew: `brew install jbox-web/tap/donico`;
-- [aqua](https://aquaproj.github.io), through [mise](https://mise.jdx.dev),
-  with the jbox-web registry configured. In a `mise.toml`:
+- [mise](https://mise.jdx.dev), in either of two ways.
+
+Straight from the GitHub release, with nothing to configure: mise picks the
+archive of the platform itself. In a `mise.toml`:
+
+```toml
+[tools]
+"github:jbox-web/donico" = "3.1.0"
+```
+
+Or through [aqua](https://aquaproj.github.io), with the jbox-web registry
+configured:
 
 ```toml
 [settings]
