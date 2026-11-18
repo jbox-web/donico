@@ -3,7 +3,10 @@
 The Ruby gem is the oracle. Two scripts, `generated-files.sh` and
 `commands.sh`, run the gem and the binary on throwaway copies of the local
 clones of the image repositories and compare them (design document, section 8,
-first two checks). They are meant for the owner's machine: the clones live on
+first two checks). A third, `fleet.sh`, does the same for the fleet commands
+of `donico-manager` against the donico-manager gem, on copies of the fleets'
+configuration repositories (fleet-side design, section 12; described after
+the reports of the first two). They are meant for the owner's machine: the clones live on
 private forges and cannot be reached from a public CI. Two more scripts check
 the checkers and the shipped binary: `self-test.sh` and `static-smoke.sh`,
 described at the end.
@@ -178,10 +181,88 @@ Under `$HOME/.local/tmp/claude-jbox-donico-oracle/<script>/`:
   call logs the host inventory is built from) and, per repository,
   `work/<fleet>.<repository>/info.*` (the matrix as the gem lists it).
 
+## fleet.sh
+
+```sh
+scripts/oracle/fleet.sh <gem checkout> <bin/donico-manager> <configuration repository>...
+```
+
+- `<gem checkout>`: the donico-manager gem repository, never modified. Its
+  `ruby` and `bundle` are resolved with `mise which` from that directory, and
+  the gem runs from it (`bundle exec` on its own `Gemfile`, its
+  `exe/donico-manager`).
+- `<bin/donico-manager>`: the binary under its fleet name (the symlink
+  `mise dev:build` makes): only its directory is resolved, so that it keeps
+  that name.
+- `<configuration repository>`: the root of a fleet's configuration repository
+  (`.../ci-config`, holding `donico-manager.yml`). Several can be given, each
+  once. One without `donico-manager.yml` is reported and skipped.
+
+Each configuration repository is copied with `rsync -a` and the same excludes
+as above (no `.env*` file nor other carrier of secrets is ever copied or
+read), together with its workspace, read from `workspace:` in the manifest:
+a workspace inside the repository comes with it, one outside it
+(`../docker-images`) is copied beside the copy at the same relative place. An
+absolute workspace is refused (no copy can stand beside it). The copies live
+under `$HOME/.local/tmp/claude-jbox-donico-oracle/fleet/repos/<fleet>/`:
+`pristine/`, copied once, and `work/`, where both sides run in turn, in the
+same directory so that a path either side prints is the same path. Before
+each side, `work/` is reset from `pristine/` and the files the generators write
+(the root README, the heritage file, every `<workspace>/*/README.md` already
+there) are overwritten with one sentinel line. On a real fleet those files
+always exist beforehand: a side must rewrite them, not append, and leave alone
+those it skips; and a side that writes nothing never passes on the committed
+text.
+
+Each side then runs, from the configuration repository, under `env -i` with
+the `PATH` of the other scripts preceded by `fake-git/`, each child bounded by
+`timeout 60`, at most four fleets at a time:
+
+| Compared | Gem | Binary |
+|---|---|---|
+| `repos-list` | `repos list` | `repos list` |
+| `repos-status`, `-diff`, `-pull`, `-gc` | `repos <sweep>` | `repos <sweep>` |
+| `update-readme` | `update-readme` | `update-readme` |
+| `image-readmes` | `update-image-readmes` | `repos update-readme` |
+| `heritage` | `heritage` | `heritage` |
+
+The names differ by design (difference 1): each side is called by its own,
+nothing is filtered for that. For each command the exit status, stdout, the
+fake git's log and the log of the fakes of `fake/` (expected empty) are
+compared; stderr is kept, not compared. Then the files: `root-readme`,
+`heritage-file` (the `heritage_output` of the manifest, default
+`doc/image-heritage.md`), and one `image-readme` per `<workspace>/*/README.md`
+present after either side, rewritten or left (a README of a skipped image left
+with its sentinel on both sides is the same; one that only one side has or
+changed is a difference). The gem must have rewritten the root README, the
+heritage file and at least one image README, or the run reports a gem
+failure. The one normalisation is design difference 2, on the gem's image
+READMEs only: `bin/rake help` becomes `donico help`. Never add another one:
+fix `src/` with a failing spec first.
+
+`fake-git/git` logs its working directory and its arguments to
+`ORACLE_GIT_LOG`, prints `fake git <arguments> in <repository>`, and fails
+(status 1) in the repository named by `ORACLE_GIT_FAIL`: the first repository
+the gem's `repos list` says is cloned. Each sweep therefore ends on its
+failures line and status 1 on both sides; the gem must exit 1 there and run
+git at least once, and 0 for the other commands, or the comparison is a gem
+failure (it proved nothing) and the run fails. The self-check proves, in the
+children's environment, that `git` and the names of `fake/` resolve to the
+fakes and that the fake git logs, and fails where told.
+
+The script ends with `N compared, M different`, and exits 1 if `M > 0`, if
+nothing was compared, if the gem misbehaved, or if a worker died. The lock is
+`fleet.lock`. Records: `rec/<fleet>.tsv` (one line per comparison: status,
+comparison, fleet, image or `-`, detail), `rec/<fleet>.diff`, `all.tsv`, and
+per fleet `work/<fleet>/{gem,bin}.<comparison>.{out,err,exit,git,calls,callers}`,
+`work/<fleet>/{gem,bin}.files/` (the files each side wrote),
+`work/<fleet>/compared/` (the gem's files as compared, normalised for the image
+READMEs) and `work/<fleet>/fail-repo`.
+
 ## self-test.sh
 
 ```sh
-scripts/oracle/self-test.sh <gem checkout> <bin/donico>
+scripts/oracle/self-test.sh <donico gem checkout> <bin/donico> <donico-manager gem checkout> <bin/donico-manager>
 ```
 
 Proves the gate can fail. On a tiny project of its own (never the fleets: one
@@ -192,9 +273,25 @@ it: one appends an argument to the `buildx bake` call (call log), one makes
 one always provides the declared secret (missing-secret pass), one makes
 `generate-files` write nothing, one makes it leave one more file. Each mutation
 must be reported different with exit 1. A fleet holding no project must make
-both scripts fail on "nothing was compared". Its records go under
-`self-test/runs/`, apart from those of a run over the fleets. Run it after any
-change to `lib.sh` or the scripts.
+both scripts fail on "nothing was compared".
+
+For `fleet.sh` it uses a copy of the fixture fleet of the specs
+(`spec/fixtures/fleet`), its workspace moved beside the configuration
+repository (`../docker-images`), plus an existing README for `ruby` and an
+undeclared directory `undeclared/` with a README: the real `donico-manager`
+must give exit 0 and 0 different, having shown a failing repository in a
+sweep, the workspace beside the copy, a `bin/rake help` normalised and the
+README of the skipped `undeclared/` compared. Then eight wrappers, each
+reported different with exit 1 on the comparison it targets: one drops a line
+of the root README, one makes `repos status` skip the `ruby` repository, one
+adds a line to the heritage file, one adds a line to an image README, one
+makes `repos gc` exit 0 where it exits 1, one appends to the root README
+instead of rewriting it, one touches the README of `undeclared/`, one writes
+an image README the gem does not write. A configuration repository without
+`donico-manager.yml` must make it fail on "nothing was compared".
+
+Its records go under `self-test/runs/`, apart from those of a run over the
+fleets. Run it after any change to `lib.sh` or the scripts.
 
 ## static-smoke.sh
 
@@ -210,16 +307,22 @@ rows, a `.inspecrc`, `test_variants`, `login_env`, build args, no secret, no
 inside a throwaway `alpine:3.24` container of `<platform>` (`linux/amd64` or
 `linux/arm64`). The list: `help`, `generate-files`, `matrix`, `image-builder`,
 the `build`, `push`, `test`, `clean` and `login` tasks of the rows, an unknown
-task, `lint-dockerfile`, and a `test` where the fake docker fails the
-`inspec exec` call with status 100.
+task, `lint-dockerfile`, a `test` where the fake docker fails the
+`inspec exec` call with status 100, and one fleet command, `donico-manager
+repos list`. For that one the project directory is also the configuration
+repository of a two-image fleet (`donico-manager.yml`, workspace `images/`,
+`ruby` cloned and `traefik` not), and the binary is started through a symbolic
+link named `donico-manager`, as the packages install it: on the host it points
+at the native binary, in the container at the mounted Linux binary (the link
+is mounted read-only at `/alias`).
 
 The `docker` on the `PATH` of both sides is a shell script that logs its
 arguments (`--- call`, then one line per argument), prints a container id for
 the start and fails the Inspec call on demand. The one real docker call of the
 script starts the container, bounded by `timeout 900`: `docker run --rm --name
 donico-static-smoke-<pid> --platform <platform> --user <uid>:<gid> -v
-<project>:/work -v <binary>:/usr/local/bin/donico:ro -v <fake dir>:/fake:ro -w
-/work -e PATH=/fake:/usr/bin:/bin alpine:3.24 ...` (the container is removed
+<project>:/work -v <binary>:/usr/local/bin/donico:ro -v <fake dir>:/fake:ro -v
+<link dir>:/alias:ro -w /work -e PATH=/fake:/usr/bin:/bin alpine:3.24 ...` (the container is removed
 by name when the bound is hit; the host run is bounded by `timeout 300`). Everything but the project
 copy is mounted read-only, the container is removed, and each command runs
 under `env -i` with a `HOME` of its own.
@@ -230,7 +333,9 @@ only normalisation). The report is one `same` or `DIFFERENT` line per command
 and file, then `N compared, M different`; the script exits 1 if `M > 0`, or
 when a side produced fewer results than the list or the comparison would be
 empty (the build made no `buildx` call, the failing run did not exit 100,
-`generate-files` wrote nothing). Records are kept under
+`generate-files` wrote nothing, `repos list` did not list the fleet: a binary
+that ignored its second name would refuse `repos` as an unknown task on both
+sides alike). Records are kept under
 `$HOME/.local/tmp/claude-jbox-donico-smoke/<platform>/`.
 
 The Linux binaries come from `mise release:static`, run in a throwaway copy of

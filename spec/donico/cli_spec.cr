@@ -78,7 +78,8 @@ describe Donico::CLI do
         # licenses.manifest, which is tracked, lists what the folder holds.
         names = run.stdout.lines.select(&.starts_with?("==> ")).map(&.[4..-5])
         names.should eq ["clib-Apache-2.0.txt", "clib-Boehm-GC.txt", "clib-GCC-runtime-exception.txt",
-                         "donico.txt", "libyaml.txt", "musl.txt", "pcre2.txt"]
+                         "cookie_jar.txt", "crest.txt", "donico.txt", "http-client-digest_auth.txt",
+                         "http_proxy.txt", "libyaml.txt", "musl.txt", "pcre2.txt", "termisu.txt", "zlib.txt"]
         # A sentence of the body of two of them: a header alone is not a notice.
         run.stdout.should contain "Permission is hereby granted, free of charge"
         run.stdout.should contain "Apache License"

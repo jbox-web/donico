@@ -47,3 +47,9 @@ brew 'kcov'
 # crystalreleaser (the static linux binaries, built in an Alpine image), which
 # `mise release:static` goes through.
 cask 'docker'
+
+# OpenSSL 4 and the pkg-config that locates it: the mise-installed Crystal does
+# not embed OpenSSL, and crest (HTTPS to the GitHub API) makes every build link
+# it. Development builds link this formula dynamically.
+brew 'openssl@4'
+brew 'pkgconf'

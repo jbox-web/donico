@@ -1,0 +1,23 @@
+registry:  harbor.example.org/base
+group:     git@example.org:factory/images
+workspace: docker-images
+browse_url: https://gitlab.example.org/factory/images
+ci_config_url: https://gitlab.example.org/groups/factory/-/settings/ci_cd
+heritage_output: doc/heritage/image-heritage.md
+registries:
+  debian_jbox: harbor.example.org/jbox/debian
+  debian_base: harbor.example.org/debian
+debian_images:
+  - debian-base
+categories:
+  - web
+  - tools
+  - desktop
+images:
+  - traefik
+  - debian-base
+  - debuerreotype
+  - ruby
+  - alloy
+  - nocategory
+  - absent

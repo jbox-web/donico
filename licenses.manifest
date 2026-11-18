@@ -1,42 +1,58 @@
 # kind | name | source (on-disk LICENSE path for shards; for clib/runtime, an
 # SPDX id of licenses-spdx/, or the path of the library's own license file)
 #
-# Only what the released binary actually embeds. donico has no runtime shard
-# at all (stdlib only), and ameba is a mise tool that never ends up in it.
+# Only what the released binary actually embeds: crest and the shards it
+# brings, termisu, and not ameba, a mise tool that never ends up in it.
 #
 # The clib list follows the stdlib modules the tool requires:
 #   Regex                      -> pcre2
 #   YAML                       -> libyaml
+#   HTTP::Client over TLS      -> openssl (libssl + libcrypto), through crest
+#   Compress::Deflate/Gzip     -> zlib, required by the stdlib's HTTP
 #   GC, static libc, runtime   -> boehm-gc, musl, libgcc
-# No openssl (donico does no HTTP or TLS) and no zlib (no Compress module).
-# CONFIRMED on 2026-11-17 against the static link line of this very binary,
+# CONFIRMED on 2026-11-18 against the static link line of this very binary,
 # captured with `crystal build --static --release --no-debug --verbose` in the
 # image crystalreleaser generates for its docker builds (alpine:3.24, Alpine's
 # crystal 1.20.3), on linux/amd64 and on linux/arm64, identical:
-#   cc _main.o3.o -o donico -rdynamic -static -L/usr/bin/../lib/crystal
+#   cc _main.o3.o -o donico -rdynamic -static -L/usr/bin/../lib/crystal -lz
+#      `pkg-config --libs libssl` `pkg-config --libs libcrypto`
 #      -lyaml -lpcre2-8 -pthread -lpthread -lgc -lpthread -ldl
-# (+ musl and libgcc, which cc links without a flag). The libraries are the ones
-# apk records in that image: pcre2 10.49 BSD-3-Clause, yaml 0.2.5 MIT, musl
-# 1.2.6 MIT, gc 8.2.12 Boehm-GC, libgcc 15.2.0. This list is crystalreleaser's
-# own, minus its OpenSSL and zlib entries. Re-run the check when a stdlib
-# module is added or the image moves.
+# (the two pkg-config calls give -lssl and -lcrypto; + musl and libgcc, which cc
+# links without a flag). No gmp, no libevent. The libraries are the ones apk
+# records in that image: openssl 3.5.9 Apache-2.0 (openssl-libs-static), zlib
+# 1.4 Zlib, pcre2 10.49 BSD-3-Clause, yaml 0.2.5 MIT, musl 1.2.6 MIT, gc 8.2.12
+# Boehm-GC, libgcc 15.2.0. This list is crystalreleaser's own. Re-run the check
+# when a stdlib module or a shard is added or the image moves.
 #
 # The list is the one of the static Linux binaries, and a superset for the
-# darwin ones, which embed the same notices. Those are linked dynamically
-# against libSystem and libiconv only (otool -L) and carry neither musl nor
+# darwin ones, which embed the same notices. Those load libSystem, libiconv
+# and the system's libz dynamically (otool -L of the release build,
+# 2026-11-18), link Homebrew's OpenSSL 4 statically (static_libs of
+# .crystalreleaser.yml; Apache-2.0 as well), and carry neither musl nor
 # libgcc; their pcre2, libgc and libyaml are the ones the Crystal that mise
 # installs embeds, at other versions (pcre2 10.42, gc 8.2.0, yaml 0.1.6 for
 # Crystal 1.20.3, read from its embedded/lib/pkgconfig/*.pc on 2026-11-18),
 # under the same licenses.
 #
-# MIT and BSD-3-Clause require the copyright notice to be reproduced, and their
-# SPDX text only has a blank there: those three libraries embed their own
-# license file, taken from their sources at the versions above:
+# MIT, BSD-3-Clause and zlib require the copyright notice to be reproduced,
+# and their SPDX text only has a blank there: those four libraries embed their
+# own license file, taken from their sources at the versions above:
 #   pcre2    LICENCE.md  github.com/PCRE2Project/pcre2  tag pcre2-10.49
 #   libyaml  License     github.com/yaml/libyaml        tag 0.2.5
+#   zlib     LICENSE     github.com/madler/zlib         tag v1.4
 #   musl     COPYRIGHT   git.musl-libc.org/cgit/musl    tag v1.2.6
+# zlib.txt is crystalreleaser's own copy, checked identical on 2026-11-18 to
+# the notice of /usr/include/zlib.h in the build image. OpenSSL 3 is
+# Apache-2.0, whose SPDX text is complete as it is.
+shard   | crest           | lib/crest/LICENSE
+shard   | http_proxy      | lib/http_proxy/LICENSE
+shard   | http-client-digest_auth | lib/http-client-digest_auth/LICENSE
+shard   | cookie_jar      | lib/cookie_jar/LICENSE
+shard   | termisu         | lib/termisu/LICENSE.txt
+clib    | openssl         | Apache-2.0
 clib    | pcre2           | licenses-upstream/pcre2.txt
 clib    | libyaml         | licenses-upstream/libyaml.txt
+clib    | zlib            | licenses-upstream/zlib.txt
 clib    | boehm-gc        | Boehm-GC
 clib    | musl            | licenses-upstream/musl.txt
 clib    | libgcc          | GCC-runtime-exception

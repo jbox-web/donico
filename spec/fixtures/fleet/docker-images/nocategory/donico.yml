@@ -1,0 +1,4 @@
+registry: harbor.example.org/base
+matrix:
+  - version: "1.0.0"
+    distro: trixie

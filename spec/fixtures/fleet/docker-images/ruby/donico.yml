@@ -1,0 +1,9 @@
+registry: harbor.example.org/base
+category: web
+description: Ruby, from the official sources
+matrix:
+  - version: 3.10
+    distro: trixie
+    tags:
+      - "%<version>s"
+      - "%<version>s-%<distro>s"

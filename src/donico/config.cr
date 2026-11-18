@@ -17,7 +17,9 @@ module Donico
   # This is the stdlib's `YAML::Schema::Core::Parser#parse_mapping` (Crystal
   # 1.20) with that one loop changed. The class is undocumented stdlib: the
   # merge examples of spec/donico/config_spec.cr fail if an upgrade changes it.
-  private class PsychMergeParser < YAML::Schema::Core::Parser
+  #
+  # Not private: the fleet manifest (donico-manager.yml) is read with it too.
+  class PsychMergeParser < YAML::Schema::Core::Parser
     protected def parse_mapping
       mapping = anchor new_mapping
       raw_mapping = mapping.as_h

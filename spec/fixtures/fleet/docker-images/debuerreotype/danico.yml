@@ -1,0 +1,7 @@
+registry: harbor.example.org/base
+category: distro
+description: Builds the Debian root file systems
+github_repo: debuerreotype/debuerreotype
+matrix:
+  - version: "0.17"
+    distro: trixie

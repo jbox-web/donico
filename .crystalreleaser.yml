@@ -10,10 +10,28 @@ project_name: donico
 builds:
   - id: donico
     target: donico
+    # The same binary is the fleet tool under its second name: it reads the
+    # basename of argv[0] (Donico.fleet_program?). A symbolic link next to the
+    # binary in the archives, the .deb and .rpm packages and the aqua entry;
+    # the Homebrew formula installs it in its own `install` below. Only a
+    # tar.gz holds a link, which the archive below is.
+    aliases: [donico-manager]
     flags: [--release, --no-debug]
     env:
       # Read by src/donico/version.cr at compile time.
       - DONICO_VERSION={{ .Version }}
+    # The darwin binaries link Homebrew's OpenSSL 4 statically (crest makes
+    # every build link OpenSSL for the HTTPS requests of the fleet commands),
+    # the same on arm64 and amd64, whatever OpenSSL the runner links by
+    # default: without it the binary loads
+    # /opt/homebrew/opt/openssl@N/lib/libssl.N.dylib and only starts on a Mac
+    # with that very formula at that very path. crystalreleaser then checks
+    # with otool -L that the binary only loads what macOS ships, and fails the
+    # build otherwise. The darwin runners install the formula first
+    # (release.yml, and build_static_binaries of ci.yml).
+    static_libs:
+      - formula: openssl@4
+        libs: [ssl, crypto]
     platforms:
       - os: linux
         arch: amd64
@@ -32,15 +50,21 @@ builds:
     # No docker section: the linux binaries are built in the image
     # crystalreleaser generates, alpine:3.24 with Alpine's own Crystal and the
     # static libraries the stdlib links, never in a third-party Crystal image.
-    # The darwin binaries need no static_libs: the Crystal that mise installs
-    # embeds libgc, pcre2 and libyaml, and donico does no TLS, so they only
-    # load /usr/lib/libSystem and libiconv.
+    # Its base packages already hold the OpenSSL and zlib that crest brings
+    # (openssl-libs-static, zlib-static): the static link line of
+    # licenses.manifest shows nothing else. The darwin binaries load
+    # /usr/lib/libSystem, libiconv and libz besides the OpenSSL linked above:
+    # the Crystal that mise installs embeds libgc, pcre2 and libyaml.
 
 # The binary embeds its third-party notices (licenses/), which must be
 # assembled before compiling. Before hooks run on every runner of a split
-# build, and not during the merge.
+# build, on the host, and not during the merge, in this order. The native
+# darwin builds need lib/ (the docker builds install their own, in a volume),
+# and the harvest copies the LICENSE of each runtime shard from lib/: shards
+# first.
 before:
   hooks:
+    - shards install --production
     - bash scripts/harvest-licenses.sh
 
 archives:
@@ -86,6 +110,9 @@ nfpms:
       build, test, push, clean and login tasks, locally and in CI.
     license: MIT
     bindir: /usr/bin
+    # The fleet commands ask the GitHub API over HTTPS: the statically linked
+    # OpenSSL reads the system's certificate store.
+    dependencies: [ca-certificates]
     contents:
       - src: LICENSE
         dst: /usr/share/doc/donico/LICENSE
@@ -107,8 +134,10 @@ brews:
     license: MIT
     install: |
       bin.install "donico"
+      bin.install_symlink "donico" => "donico-manager"
     test: |
       system bin/"donico", "--version"
+      system bin/"donico-manager", "--version"
 
 aqua:
   - repository:

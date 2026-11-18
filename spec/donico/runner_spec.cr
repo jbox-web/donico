@@ -65,6 +65,21 @@ private def forward_term_when_running(runner : RegisteringRunner) : Nil
   end
 end
 
+# The child of the `detach` examples: writes whether each of its three streams
+# is the null device, then its variable A and its directory, then waits for
+# the spec's `release` file (five seconds at most) before writing `done`.
+DETACH_PROBE = %q(s=""; for fd in 0 1 2; do if [ /dev/fd/$fd -ef /dev/null ]; then s="$s null"; else s="$s other"; fi; done; printf '%s' "${s# }" > streams.txt; printf '%s|%s' "${A:-unset}" "$(pwd -P)" > seen.tmp; mv seen.tmp seen.txt; i=0; while [ ! -f release ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i+1)); done; : > done)
+
+# Waits for `path` to exist, five seconds at most: a child that never writes it
+# is a failed example, not a hung run.
+private def wait_for_file(path : String) : Nil
+  deadline = Time.instant + 5.seconds
+  until File.exists?(path)
+    fail "#{path} never appeared" if Time.instant > deadline
+    sleep 10.milliseconds
+  end
+end
+
 private def registering_runner(dir : String) : RegisteringRunner
   RegisteringRunner.new(Donico::Env.new({"PATH" => SYSTEM_PATH}, dir, IO::Memory.new, IO::Memory.new, Time.utc(2026, 1, 1)))
 end
@@ -377,6 +392,47 @@ describe Donico::Runner::Real do
       end
     end
   end
+
+  # What opens a URL: the opener must neither write over the text interface
+  # nor be waited for (a browser may keep running, and a pipe it inherited
+  # open, long after the page is shown).
+  describe "#detach" do
+    it "returns before the child ends, its three streams on the null device" do
+      with_tmp_dir do |dir|
+        runner = real_runner(dir, extra: {"A" => "1"})
+        runner.detach("sh", ["-c", DETACH_PROBE]).should be_nil
+        # The child waits for `release`, which only this example writes.
+        File.exists?(File.join(dir, "done")).should be_false
+
+        wait_for_file(File.join(dir, "seen.txt"))
+        File.read(File.join(dir, "streams.txt")).should eq("null null null")
+        File.read(File.join(dir, "seen.txt")).should eq("1|#{File.realpath(dir)}")
+
+        File.write(File.join(dir, "release"), "")
+        wait_for_file(File.join(dir, "done"))
+      end
+    end
+
+    it "looks the command up in the PATH of the child's environment" do
+      with_tmp_dir do |dir|
+        expect_raises(Donico::EnvironmentError, "open-something not found in PATH") do
+          real_runner(dir).detach("open-something", ["https://example.org"])
+        end
+      end
+    end
+
+    it "logs the call as detach, and nothing under DONICO_QUIET" do
+      with_tmp_dir do |dir|
+        log = IO::Memory.new
+        real_runner(dir, log).detach("true", ["x"])
+        log.to_s.should eq("detach: true x\n")
+
+        quiet = IO::Memory.new
+        real_runner(dir, quiet, {"DONICO_QUIET" => "1"}).detach("true", ["x"])
+        quiet.to_s.should be_empty
+      end
+    end
+  end
 end
 
 describe RecordingRunner do
@@ -402,6 +458,16 @@ describe RecordingRunner do
     runner.capture("b", [] of String).should eq({0, "text"})
     runner.exec("c", [] of String).should eq(5)
     runner.system("d", [] of String).should eq(0)
+  end
+
+  it "records detach, which answers nothing" do
+    runner = RecordingRunner.new
+    runner.detach("open", ["https://example.org"]).should be_nil
+
+    call = runner.calls.first
+    call.kind.should eq(:detach)
+    call.command.should eq("open")
+    call.args.should eq(["https://example.org"])
   end
 
   it "records forward with the signal name as command" do

@@ -20,7 +20,7 @@ crystal = "1.20.3"
 # Installed from the jbox-web aqua registry declared above.
 # Always an exact version: mise hides a release younger than its
 # minimum_release_age from `latest` and from ranges, never from an exact pin.
-"aqua:jbox-web/crystalreleaser" = "0.2.1"
+"aqua:jbox-web/crystalreleaser" = "0.4.0"
 
 [vars]
 # Change APP_NAME per project — everything else derives from it.
@@ -50,7 +50,13 @@ COMPILE_OPTS_DEV     = "{% if exec(command='(tty -s && echo true) || echo false'
 [tasks."dev:build"]
 description = "Compile to development binary"
 depends = ["dev:licenses"]
-run = "crystal build {{vars.COMPILE_OPTS_DEV}} -o {{vars.OUTPUT_FILE}} {{vars.SOURCE_FILE}}"
+# The binary answers to a second name, donico-manager (the fleet tool), by being
+# invoked through a relative symlink next to it. Recreated on every build, so a
+# rebuild or a clean tree leaves it in place.
+run = """
+crystal build {{vars.COMPILE_OPTS_DEV}} -o {{vars.OUTPUT_FILE}} {{vars.SOURCE_FILE}}
+ln -sfn "$(basename {{vars.OUTPUT_FILE}})" "$(dirname {{vars.OUTPUT_FILE}})/donico-manager"
+"""
 
 [tasks."dev:deps"]
 description = "Install development dependencies"

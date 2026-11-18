@@ -20,6 +20,9 @@ module Donico
     abstract def output(command : String, args : Array(String), env : Vars = Vars.new) : {Int32, String}
     # Sends the signal to the child currently running, if any.
     abstract def forward(signal : Signal) : Nil
+    # Starts the command with its three streams on the null device and does
+    # not wait for it.
+    abstract def detach(command : String, args : Array(String)) : Nil
 
     # Base variables first, explicit ones on top.
     def self.merge_env(base : Vars, extra : Vars) : Vars
@@ -91,6 +94,22 @@ module Donico
         child.wait
       end
       {Runner.exit_code_of(status), text.to_s}
+    end
+
+    # What opens a URL. `system` would let the opener write over the text
+    # interface, `capture` would wait on a pipe the browser keeps open. The
+    # child is not forwarded signals (it is not the running child) and is
+    # reaped by a fiber of its own, so that it never lingers as a zombie.
+    def detach(command : String, args : Array(String)) : Nil
+      vars = @env.vars
+      log("detach", command, args)
+      path = resolve(command, vars)
+      File.open(File::NULL, "r+") do |null|
+        process = spawning(path) do
+          Process.new(path, args, env: vars, clear_env: true, chdir: @env.dir, input: null, output: null, error: null)
+        end
+        spawn { process.wait }
+      end
     end
 
     def forward(signal : Signal) : Nil

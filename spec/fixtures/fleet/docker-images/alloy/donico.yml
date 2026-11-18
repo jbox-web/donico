@@ -1,0 +1,10 @@
+registry: registry.example.net/other
+image_name: grafana-alloy
+category: web
+description: Telemetry collector
+github_repo: grafana/alloy
+matrix:
+  - version: "1.9.2"
+    distro: trixie
+    tags:
+      - "%<version>s"

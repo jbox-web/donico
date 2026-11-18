@@ -13,6 +13,11 @@ module Donico
   class ConfigError < Error
   end
 
+  # A donico-manager.yml that is missing, empty or does not validate. Its
+  # message is the bare text: the fleet command line adds the program prefix.
+  class ManifestError < Error
+  end
+
   # The surroundings are not what a task needs: a missing executable, an
   # unset secret variable, a secret file that does not exist.
   class EnvironmentError < Error

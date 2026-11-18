@@ -13,9 +13,21 @@ donico bookworm:1.0:test
 donico bookworm:1.0:push
 ```
 
-It is a single static binary with no runtime dependency. It reads `donico.yml`
-in the current directory, needs `docker` (with buildx) on the `PATH`, and does
-not know any registry host: every image it uses comes from your configuration.
+It is a single binary: static on Linux; on macOS it loads only libraries every
+Mac has (libSystem, libiconv, libz), OpenSSL being linked in. It reads
+`donico.yml` in the current directory, needs `docker` (with buildx) on the
+`PATH`, and does not know any registry host: every image it uses comes from
+your configuration. The fleet commands also need CA certificates for their
+HTTPS requests (see [`repos update`](#repos-update)): the .deb and .rpm
+packages depend on `ca-certificates` for that.
+
+The binary answers to two names. As `donico` it works inside one image
+repository, as described below. As `donico-manager`, a symbolic link to it that
+the archives, the packages, the Homebrew formula and the aqua entry install, it
+works on a whole fleet of image repositories: clone them, run git in each, pin
+them to a donico version, follow the upstream versions of the images and
+regenerate the fleet's documentation (see
+[Fleet commands](#fleet-commands-donico-manager)).
 
 What it does for a repository of images:
 
@@ -34,11 +46,14 @@ themselves, from nothing: see
 
 ## Installation
 
-From a release (the Linux binaries are static):
+From a release (the Linux binaries are static). The archives, the packages,
+the Homebrew formula and the aqua entry hold `donico` and, beside it,
+`donico-manager`, a symbolic link to the same binary:
 
 - the `.tar.gz` archives, the `.deb` and the `.rpm` of the
   [GitHub release page](https://github.com/jbox-web/donico/releases), with
-  `checksums.txt`;
+  `checksums.txt` (the packages depend on `ca-certificates`: the fleet
+  commands ask the GitHub API over HTTPS);
 - Homebrew: `brew install jbox-web/tap/donico`;
 - [mise](https://mise.jdx.dev), in either of two ways.
 
@@ -61,6 +76,9 @@ aqua.registries = ["https://github.com/jbox-web/aqua-registry"]
 "aqua:jbox-web/donico" = "3.1.0"
 ```
 
+The versions above predate the fleet commands: the `donico-manager` link
+ships from the release whose CHANGELOG entry lists them.
+
 From source (Crystal >= 1.20):
 
 ```sh
@@ -69,7 +87,9 @@ mise dev:build          # bin/donico
 ```
 
 Check the install with `donico --version`, which prints the version, the commit
-and the platform: `donico 3.1.0 (<commit>, linux/amd64)`.
+and the platform: `donico 3.1.0 (<commit>, linux/amd64)`. `donico-manager
+--version` prints the same under its second name. A build from source has the
+link too: `mise dev:build` writes `bin/donico-manager` beside `bin/donico`.
 
 ## Quick start
 
@@ -1031,13 +1051,245 @@ changes, and what to do in a repository:
 
 Anything else that differs from the gem is a bug: please report it.
 
+## Fleet commands: `donico-manager`
+
+The same binary, called `donico-manager` (the name the packages, the archives,
+Homebrew and aqua install beside `donico`, as a symbolic link), works on a whole
+fleet of image repositories rather than inside one: clone them, run git in
+each, pin them to a donico version, follow the upstream versions of the images
+and regenerate the fleet's documentation. It replaces the `donico-manager` Ruby
+gem, reads the same `donico-manager.yml`, and decides which program it is on the
+name it was started under alone (`ln -s donico donico-manager` is a complete
+installation).
+
+It runs from the root of a fleet's configuration repository, the repository
+that holds `donico-manager.yml` and, below its `workspace`, the clones of the
+image repositories. It loads the `.env` of that repository the way donico loads
+the one of an image repository (see [The `.env` file](#the-env-file)): the
+process environment wins, so `GITHUB_TOKEN` can live there.
+
+### The manifest: `donico-manager.yml`
+
+Everything that tells one fleet from another is in this file, at the root of
+the configuration repository:
+
+<!-- donico-manager.yml -->
+```yaml
+registry:   registry.example.org/base
+group:      git@git.example.org:images
+workspace:  docker-images
+browse_url: https://git.example.org/images
+categories: [Base images, Web, Databases]
+
+images:
+  - ruby
+  - grafana
+  - postgres: { constrain: "17" }
+  - traefik:  { pinned: true }
+  - base:     { check_versions: false, bump_donico: false }
+```
+
+`repos clone` clones `ruby` from `git@git.example.org:images/ruby.git` into
+`docker-images/ruby`. Images are always walked in sorted order (`base`,
+`grafana`, `postgres`, `ruby`, `traefik`), whatever the order of the file.
+
+| Key | Required | Default | What it is for |
+|---|---|---|---|
+| `registry` | yes | | Prefix of the published images, for the tags in the READMEs |
+| `group` | yes | | Remote of the group: `repos clone` takes `<group>/<image>.git` |
+| `workspace` | yes | | Directory of the clones, relative to the configuration repository (`../docker-images` and an absolute path work too) |
+| `images` | yes | | The fleet: a bare name, or a name with its policies (below) |
+| `browse_url` | for `update-readme` | | Web address of the group, for the links and badges of the root README |
+| `ci_config_url` | for `repos update-readme` | | Link to the CI variables, quoted in each image README |
+| `categories` | for `update-readme` | `[]` | Sections of the root README, in the order they are rendered |
+| `registries` | for `heritage` | `{}` | `debian_jbox` and `debian_base`: the prefixes the heritage tree turns into virtual parents |
+| `heritage_output` | no | `doc/image-heritage.md` | Where the heritage tree is written |
+| `debian_images` | no | `[]` | Images whose tags take the `image_name` of each row, or its `distro`, rather than the image name |
+
+Every missing required key is named at once. `commit_linter` is accepted and
+ignored. Any other key is ignored.
+
+| Policy | Default | Effect |
+|---|---|---|
+| `check_versions` | `true` | `false`: the image is not looked up at all (its version comes from its own tooling) |
+| `bump_donico` | `true` | `false`: `bump-donico` leaves the repository alone |
+| `constrain` | | `"17"`: the upstream lookup stays in that series (the greatest tag starting with `17.` or `v17.`) |
+| `pinned` | `false` | The image is looked up and shown, but never offered as an update |
+
+An unknown policy is refused, not ignored: read as "no policy", a typo would
+treat the image like every other one, silently.
+
+The fleet also provides, in the configuration repository, `templates/README.md`
+(the head of the root README, which `update-readme` and `repos update` need;
+the tables are appended to it) and, optionally, `todo.yml` (planned images, by
+section: `images: { web: [caddy] }`).
+
+### The commands
+
+<!-- donico-manager help -->
+```
+Usage: donico-manager <command> [options]
+donico-manager bump-donico VERSION          # Pin every image repo to a donico version
+donico-manager update-readme                # Regenerate the root README from the donico.yml files
+donico-manager heritage                     # Regenerate the image heritage tree from the Dockerfiles
+donico-manager repos update                 # Interactive TUI: bump, regenerate, commit and push image versions
+donico-manager repos list                   # List cloned repositories
+donico-manager repos clone [REPO]           # Clone the image repositories into the workspace
+donico-manager repos status [REPO]          # Run git status on the repositories
+donico-manager repos diff [REPO]            # Run git diff on the repositories
+donico-manager repos pull [REPO]            # Run git pull on the repositories
+donico-manager repos gc [REPO]              # Run git gc on the repositories
+donico-manager repos update-readme [REPO]   # Regenerate the README of each cloned image repo
+donico-manager repos open-upstream [REPO]   # Open the upstream repository URLs in the browser
+donico-manager repos check-hadolint [REPO]  # Run hadolint on the Dockerfiles
+donico-manager repos check-security-spec    # Check that each cloned image has a security InSpec control
+```
+
+`[REPO]` restricts a command to one image of the manifest; an unknown name is
+an error. `donico-manager` alone, and `--help` or `-h` anywhere on the line,
+print this list (the `repos` part after `repos`). `--version` prints the
+version of the binary.
+
+- **The sweeps** (`repos status`, `diff`, `pull`, `gc`) run `git <command>` in
+  each cloned repository, on the terminal, between separator lines
+  (`---------------------`, `Enter in <name>`). A repository that is not cloned
+  is said so (`<name>: not cloned, skipping`) and is not a failure. A failing
+  repository does not stop the sweep: the last line says how many failed
+  (`2 repository/repositories failed.`) and the status is 1. **`repos
+  clone`** creates the workspace and clones each missing image from `group`
+  (`Cloning <name>`), saying `<name>: already cloned, skipping` for the others.
+- **`repos list`** prints `Repository exists: <name>` or `Repository missing:
+  <name>` for every image; **`repos check-security-spec`** prints `OK: <name>`
+  or `MISSING: <name>` for every cloned image, according to the presence of
+  `test/default/controls/security_spec.rb`, with status 1 if one is missing.
+  Names are coloured on a terminal only, and never when `NO_COLOR` holds a
+  value or `TERM` is `dumb`.
+- **`update-readme`** rewrites the root `README.md` from `templates/README.md`
+  and the `donico.yml` of each cloned image; **`repos update-readme`**
+  rewrites the `README.md` of each cloned image; **`heritage`** writes the
+  tree of the images' `FROM` lines to `heritage_output`. The README generators
+  read `donico.yml` as plain YAML, without donico's validation, so an image
+  donico would refuse still gets its line.
+- **`repos check-hadolint`** lints each image's Dockerfiles as
+  `donico lint-dockerfile` does; **`repos open-upstream`** opens in the
+  browser the upstream links found in the cloned image READMEs (with `open`,
+  or `xdg-open` on Linux).
+- **`bump-donico VERSION [--push]`** pins every image repository to a donico
+  version: in its `mise.toml`, the version of the pin line is replaced, through
+  either backend of [Installation](#installation),
+  `"github:jbox-web/donico" = "<version>"` or
+  `"aqua:jbox-web/donico" = "<version>"` (each line keeps its backend; a file
+  that holds both has both replaced). Then `docker-bake.hcl` and the CI matrix
+  are regenerated, and the change is committed (`build: bump to donico
+  <version>`), then pushed with `--push`. `VERSION` must be the version of the
+  binary that runs (`donico-manager --version`): the files it regenerates are
+  this binary's output. Each repository gets one line: `  + <name>` (done),
+  `  = <reason>` (skipped: `<name>: bump_donico is false`, `<name> is not
+  cloned`, or `<name>: no donico pin in mise.toml` for a repository not
+  migrated to the binary yet) or `  ! <name>: <reason>` (failed: uncommitted
+  changes, not on `master`, a regeneration donico refuses, a refused commit).
+  A failure does not stop the others; the status is 1 if one failed.
+
+### `repos update`
+
+The interactive screen of the fleet: it looks up the latest upstream version of
+every image (GitHub releases, else tags; the series of `constrain`), shows
+which ones are behind, and applies the chosen updates. Its labels are in
+French, as in the gem. It needs:
+
+- `GITHUB_TOKEN`, in the environment or the `.env` of the configuration
+  repository: a full scan does not fit in GitHub's anonymous limit of 60
+  requests an hour, and a truncated scan would show a half-wrong table without
+  saying so;
+- a terminal: a controlling terminal (`/dev/tty`) and `TERM`;
+- CA certificates, to check GitHub's: on Linux the system store (the .deb and
+  .rpm packages depend on `ca-certificates`); on macOS the store of Homebrew's
+  `openssl@4` when it is installed, else the system bundle `/etc/ssl/cert.pem`.
+  `SSL_CERT_FILE` and `SSL_CERT_DIR`, in the environment or the `.env` of the
+  configuration repository, are always loaded, and on macOS in place of the
+  system bundle (a company proxy whose root certificate lives in the Keychain
+  needs it exported to a file named there);
+- image repositories that are cloned, clean, on `master` and pinned to the
+  version of the running binary through either backend (or not pinned at
+  all), since it regenerates their files with this binary; one that is not is
+  failed, with the reason, and the others go on;
+- `templates/README.md`, for the root README.
+
+Keys: arrows or `j`/`k` move, space or `x` selects, `a` selects (or clears) every update,
+enter or `d` applies, `p` pushes, `o` opens the upstream repository, `q` or
+Ctrl-C quits. Applying bumps the version in each chosen image's `donico.yml`
+(the first matching line, quotes kept) and regenerates its files, then
+regenerates the image READMEs and the root README once, commits each image,
+then commits the root README in the configuration repository. Nothing is
+pushed before `p`, which pushes each image, then the configuration repository.
+
+A signal (TERM, HUP, or INT sent from outside) gives the terminal back and ends
+with status 128 + the signal number. During the apply phase it stops between
+two steps: a commit already started runs to its end, a push stops after the
+repository in progress, and the images already bumped but not yet committed
+stay modified, as may the root README of the configuration repository. Their
+`donico.yml` already holds the new version, so the next scan no longer offers
+them: nothing reports them. Find them with `donico-manager repos status` (and
+`git status` in the configuration repository), then in each either commit the
+change by hand or put it back with `git checkout -- .`.
+
+### Coming from the `donico-manager` gem
+
+Same `donico-manager.yml`, same lines, same generated READMEs and heritage tree
+(the checks are in `scripts/oracle/fleet.sh`). What changes:
+
+1. **Command names.** `clone` becomes `repos clone [REPO]`,
+   `update-image-readmes` becomes `repos update-readme [REPO]`, and `repos
+   open-upstream` takes `[REPO]`. `clean`, `lint-commits`, `completions`,
+   `version` (use `--version`), `--tree`, `repos reconcile` and `repos
+   check-versions` are gone.
+2. **The image README says `donico help`** where the gem wrote `bin/rake help`.
+3. **`bump-donico` edits `mise.toml`** instead of writing a `Gemfile`, and its
+   commit body names `mise.toml`; `templates/donico/Gemfile` is no longer read.
+   The pin is the `"github:jbox-web/donico"` or `"aqua:jbox-web/donico"` line;
+   a repository without one is skipped (`= <name>: no donico pin in
+   mise.toml`, where the gem said `no donico Gemfile`), and `VERSION` must be
+   the version of the running binary.
+4. **Regeneration and `check-hadolint` run inside the binary**, not through the
+   repository's own tooling, so they also work on a repository that still has
+   its `Rakefile`. `repos update` fails an image pinned to another donico
+   version, whose files this binary would regenerate.
+5. **Errors are one line**, `donico-manager: <message>`, status 1.
+6. **The rewritten file is restored when a regeneration fails** (`mise.toml` in
+   `bump-donico`, `donico.yml` in `repos update`): the repository is left as
+   it was, where the gem left it modified, and refused on the next run.
+7. **A refused `git add` or commit is a failure** (`! <name>: commit failed:
+   <message>`), and that repository is not pushed. The gem dropped that result.
+8. **`--help` anywhere on the line** prints the usage, where an unknown option
+   is otherwise refused.
+9. **The terminal check is the controlling terminal** (`/dev/tty`), not
+   stdout: `donico-manager repos update > file` opens the interface where the
+   gem refused. The refusal no longer mentions `repos check-versions`.
+10. **In `repos update`**, a failed commit or push of the configuration
+    repository stays on screen after the batch, where the gem showed it for
+    an instant; the root README commit takes `README.md` only, never what was
+    already staged there; after a second apply, `p` pushes every batch
+    applied, not only the last; and an image whose commit is made can no
+    longer be selected, where the gem applied it again and failed it.
+11. **The `.env` of the configuration repository is read with donico's own
+    parser**: plain `KEY=VALUE`, nothing interpolated (see
+    [The `.env` file](#the-env-file)). The gem used the dotenv gem.
+12. **`git` absent from the `PATH` is one error line**
+    (`donico-manager: git not found in PATH`) that stops a sweep, where the
+    gem counted every repository as failed.
+13. **An invalid `todo.yml` is refused before anything is written**
+    (`donico-manager: todo.yml: invalid YAML.`), where the gem truncated the
+    root README, then crashed.
+
+Anything else that differs from the gem is a bug: please report it.
+
 ## Development
 
 ```sh
 mise dev:deps && mise dev:spec        # specs, in process, no docker
 mise dev:spec-mt                      # the same, multi-threaded
 mise dev:ameba && mise dev:format-check
-mise dev:build                        # bin/donico
+mise dev:build                        # bin/donico, and the link bin/donico-manager
 mise release:static                   # static Linux binaries and packages, in dist/ (docker)
 ```
 
@@ -1052,16 +1304,21 @@ to be skipped (see the Brewfile). The specs check this README: each
 example is parsed, and the listing, the `.matrix.yml`, the `docker-bake.hcl` and
 the JSON of the quick start are compared with what the binary generates from
 the quick-start `donico.yml`. The example of the debuerreotype section is
-checked the same way, build script included.
+checked the same way, build script included, and so is the fleet section: its
+`donico-manager.yml` is loaded through `Fleet::Manifest.load`, and its list of
+commands is compared with what `donico-manager --help` prints.
 
-The comparison with the Ruby gem is done by two scripts that run both on local
-clones of the image repositories; see [scripts/oracle/README.md](scripts/oracle/README.md).
+The comparison with the Ruby gems is done by three scripts that run both on
+local copies: two for donico on the clones of the image repositories, one for
+`donico-manager` on the fleets' configuration repositories; see
+[scripts/oracle/README.md](scripts/oracle/README.md).
 
 Releases are built by [crystalreleaser](https://github.com/jbox-web/crystalreleaser)
 from `.crystalreleaser.yml`: static linux/amd64 and linux/arm64 binaries built
-in an Alpine image with Alpine's own Crystal, darwin binaries, archives,
-checksums, `.deb` and `.rpm` packages, a Homebrew formula and an aqua registry
-entry.
+in an Alpine image with Alpine's own Crystal, darwin binaries linking
+Homebrew's OpenSSL 4 statically, archives, checksums, `.deb` and `.rpm`
+packages, a Homebrew formula and an aqua registry entry, each with the
+`donico-manager` link.
 
 ## License
 

@@ -1,0 +1,6 @@
+images:
+  web:
+    - caddy
+  desktop:
+    - firefox
+    - thunderbird

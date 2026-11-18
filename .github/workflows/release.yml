@@ -6,10 +6,11 @@ name: Release
 # .crystalreleaser.yml with `build --split`, then one job merges and publishes.
 # crystalreleaser itself is a mise tool, pinned in mise.toml.
 #
-# Copied from the release.yml template, with two differences: no OpenSSL step
-# in the macOS jobs (donico links the stdlib only, .crystalreleaser.yml has no
-# static_libs), and the `preflight` job, which checks the tokens of the
-# Homebrew tap and of the aqua registry that this project publishes to.
+# Copied from the release.yml template, with one difference: the `preflight`
+# job, which checks the tokens of the Homebrew tap and of the aqua registry
+# that this project publishes to. The macOS jobs install OpenSSL 4 as the
+# template does: donico links it through crest (static_libs of
+# .crystalreleaser.yml).
 
 # Every job starts with no permission; only the publishing job opts in.
 permissions: {}
@@ -156,6 +157,11 @@ jobs:
       - name: Fix Crystal shards
         run: mise dev:fix-shards-command
 
+      # The OpenSSL static_libs links (see .crystalreleaser.yml): the same
+      # formula on both architectures, whatever the runner has by default.
+      - name: Install OpenSSL 4
+        run: brew install openssl@4
+
       # Fails when the binary depends on a library macOS does not ship
       # (otool -L): the check runs in the build itself.
       - name: Build the darwin/arm64 binary
@@ -185,6 +191,11 @@ jobs:
       # TODO: remove me when https://github.com/crystal-lang/crystal/issues/16746 is fixed
       - name: Fix Crystal shards
         run: mise dev:fix-shards-command
+
+      # The OpenSSL static_libs links (see .crystalreleaser.yml): the same
+      # formula on both architectures, whatever the runner has by default.
+      - name: Install OpenSSL 4
+        run: brew install openssl@4
 
       # Fails when the binary depends on a library macOS does not ship
       # (otool -L): the check runs in the build itself.

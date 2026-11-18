@@ -6,7 +6,9 @@
 # binary. The same fixed list of commands runs once with the native binary on
 # the host and once with the Linux binary inside a throwaway alpine:3.24
 # container of the given platform; exit statuses, stdout, stderr, the calls
-# the fake docker received and the generated files are then compared.
+# the fake docker received and the generated files are then compared. One
+# command of the list is a fleet command, run through a symbolic link named
+# `donico-manager`, the second name the binary answers to.
 #
 #   static-smoke.sh <native bin/donico> <linux binary> <platform>
 #
@@ -54,7 +56,13 @@ case "${WORK}" in
   *) exit 2 ;;
 esac
 rm -rf "${WORK}"
-mkdir -p "${WORK}/fake" "${WORK}/home" "${WORK}/host" "${WORK}/linux"
+mkdir -p "${WORK}/fake" "${WORK}/home" "${WORK}/host" "${WORK}/linux" "${WORK}/host-alias" "${WORK}/linux-alias"
+
+# The second name, as the packages install it: a symbolic link to the binary.
+# On the host it points at the native binary; the Linux side's points at the
+# path the container mounts the binary at, and is mounted read-only at /alias.
+ln -s "${NATIVE}" "${WORK}/host-alias/donico-manager"
+ln -s /usr/local/bin/donico "${WORK}/linux-alias/donico-manager"
 
 # The fake docker: logs one `--- call` line then one line per argument, prints
 # a container id for the start, and fails an `inspec exec` with the status in
@@ -84,16 +92,22 @@ chmod 755 "${WORK}/fake/docker"
 
 # The driver runs the fixed list of commands in the current directory, each
 # under `env -i`, and writes under <results>/NN.{name,out,err,exit,calls}.
-# One line per command: name|VAR=value ...|arguments. POSIX sh, so the host
-# and the Alpine container run the very same file.
+# One line per command: name|VAR=value ...|program|arguments, where program is
+# `donico` or `donico-manager` (the link to the same binary). POSIX sh, so the
+# host and the Alpine container run the very same file.
 cat >"${WORK}/fake/driver.sh" <<'DRIVER'
 #!/bin/sh
 donico=$1
 results=$2
+manager=$3
 mkdir -p "$results" "$results/home"
 index=0
-while IFS='|' read -r name extra args; do
+while IFS='|' read -r name extra program args; do
   [ -n "$name" ] || continue
+  case "$program" in
+    donico-manager) binary=$manager ;;
+    *) binary=$donico ;;
+  esac
   index=$((index + 1))
   number=$(printf '%02d' "$index")
   : >"$results/fake.log"
@@ -102,31 +116,34 @@ while IFS='|' read -r name extra args; do
   env -i PATH="$PATH" HOME="$results/home" LANG=C \
     CI_COMMIT_TIMESTAMP='2026-07-31T10:20:30+02:00' \
     FAKE_LOG="$results/fake.log" $extra \
-    "$donico" $args >"$results/$number.out" 2>"$results/$number.err"
+    "$binary" $args >"$results/$number.out" 2>"$results/$number.err"
   echo $? >"$results/$number.exit"
   echo "$name" >"$results/$number.name"
   cp "$results/fake.log" "$results/$number.calls"
 done <<'COMMANDS'
-help||help
-generate-files||generate-files
-matrix||matrix
-image-builder||image-builder
-build||bookworm:1.0:build
-build-second-row||trixie:2.0:build
-push||bookworm:1.0:push
-test-variants||bookworm:1.0:test
-test-plain||trixie:2.0:test
-clean||bookworm:1.0:clean
-login||bookworm:1.0:login
-lint-dockerfile||lint-dockerfile
-unknown-task||nosuch:1.0:build
-test-inspec-fails|FAKE_FAIL_INSPEC=100|trixie:2.0:test
+help||donico|help
+generate-files||donico|generate-files
+matrix||donico|matrix
+image-builder||donico|image-builder
+build||donico|bookworm:1.0:build
+build-second-row||donico|trixie:2.0:build
+push||donico|bookworm:1.0:push
+test-variants||donico|bookworm:1.0:test
+test-plain||donico|trixie:2.0:test
+clean||donico|bookworm:1.0:clean
+login||donico|bookworm:1.0:login
+lint-dockerfile||donico|lint-dockerfile
+unknown-task||donico|nosuch:1.0:build
+test-inspec-fails|FAKE_FAIL_INSPEC=100|donico|trixie:2.0:test
+fleet-repos-list||donico-manager|repos list
 COMMANDS
 DRIVER
 chmod 755 "${WORK}/fake/driver.sh"
 
 # A small project: two rows, a .inspecrc, test_variants, login_env, build args,
-# no secret and no .env.
+# no secret and no .env. The same directory is also the configuration
+# repository of a two-image fleet for the fleet command: `ruby` is cloned in
+# its workspace, `traefik` is not.
 make_project() {
   local dir=$1
   mkdir -p "${dir}"
@@ -153,6 +170,15 @@ matrix:
 YAML
   printf -- '--reporter cli\n--no-color\n' >"${dir}/.inspecrc"
   printf 'FROM scratch\n' >"${dir}/Dockerfile"
+  cat >"${dir}/donico-manager.yml" <<'YAML'
+registry:  registry.example.org/base
+group:     git@git.example.org:images
+workspace: images
+images:
+  - traefik
+  - ruby
+YAML
+  mkdir -p "${dir}/images/ruby"
 }
 make_project "${WORK}/host/project"
 make_project "${WORK}/linux/project"
@@ -167,7 +193,7 @@ mkdir -p "${HOST_PROJECT}/.smoke"
 (
   cd "${HOST_PROJECT}" &&
     timeout -k 10 300 env -i PATH="${WORK}/fake:/usr/bin:/bin" HOME="${WORK}/home" LANG=C \
-      /bin/sh "${WORK}/fake/driver.sh" "${NATIVE}" "${HOST_PROJECT}/.smoke"
+      /bin/sh "${WORK}/fake/driver.sh" "${NATIVE}" "${HOST_PROJECT}/.smoke" "${WORK}/host-alias/donico-manager"
 ) >"${WORK}/host.log" 2>&1
 echo "host run: exit $?"
 
@@ -179,8 +205,9 @@ timeout -k 10 900 docker run --rm --name "${CONTAINER}" --platform "${PLATFORM}"
   -v "${LINUX_PROJECT}:/work" \
   -v "${LINUX}:/usr/local/bin/donico:ro" \
   -v "${WORK}/fake:/fake:ro" \
+  -v "${WORK}/linux-alias:/alias:ro" \
   -w /work -e PATH=/fake:/usr/bin:/bin \
-  "${IMAGE}" /bin/sh /fake/driver.sh /usr/local/bin/donico /work/.smoke \
+  "${IMAGE}" /bin/sh /fake/driver.sh /usr/local/bin/donico /work/.smoke /alias/donico-manager \
   >"${WORK}/linux.log" 2>&1
 container_status=$?
 echo "container run (${PLATFORM}): exit ${container_status}"
@@ -207,8 +234,8 @@ problems=0
 for side in host linux; do
   results="${WORK}/${side}/project/.smoke"
   count=$(find "${results}" -maxdepth 1 -name '*.exit' 2>/dev/null | wc -l)
-  if [[ ${count} -ne 14 ]]; then
-    echo "SIDE ${side}: ${count} results instead of 14 (see ${WORK}/${side}.log)"
+  if [[ ${count} -ne 15 ]]; then
+    echo "SIDE ${side}: ${count} results instead of 15 (see ${WORK}/${side}.log)"
     problems=$((problems + 1))
   fi
 done
@@ -250,7 +277,8 @@ if [[ ${problems} -eq 0 ]]; then
 
   # What an equal pair must also show, or the comparison was empty: the
   # build reached docker, the failing InSpec status came through, the
-  # generated files exist and are not empty.
+  # generated files exist and are not empty, and the second name answered
+  # as the fleet tool (a `donico` would refuse `repos` as an unknown task).
   smoke="${WORK}/host/project/.smoke"
   grep -q '^buildx$' "${smoke}/05.calls" || {
     echo 'EMPTY: the build made no buildx call'
@@ -262,6 +290,10 @@ if [[ ${problems} -eq 0 ]]; then
   }
   [[ -s "${HOST_PROJECT}/docker-bake.hcl" && -s "${HOST_PROJECT}/.gitlab-ci/extends/.matrix.yml" ]] || {
     echo 'EMPTY: generate-files wrote nothing'
+    problems=$((problems + 1))
+  }
+  [[ "$(cat "${smoke}/15.out")" == $'Repository exists: ruby\nRepository missing: traefik' ]] || {
+    echo 'EMPTY: donico-manager repos list did not list the fleet'
     problems=$((problems + 1))
   }
 fi

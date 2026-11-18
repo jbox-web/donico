@@ -1,0 +1,16 @@
+registry: harbor.example.org/base
+category: tools
+description: Debian base images, built from debuerreotype
+matrix:
+  - version: "13"
+    distro: trixie
+    image_name: debian-trixie
+    tags:
+      - latest
+      - "%<version>s"
+  - version: "12"
+    distro: bookworm
+    image_name: debian-bookworm
+    tags:
+      - latest
+      - "%<version>s"

@@ -1,0 +1,11 @@
+registry: harbor.example.org/base
+category: web
+description: Reverse proxy and load balancer
+github_repo: traefik/traefik
+matrix:
+  - version: "3.7.9"
+    distro: trixie
+    tags:
+      - latest
+      - "%<version>s"
+      - "%<version>s-%<distro>s"

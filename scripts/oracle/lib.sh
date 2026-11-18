@@ -5,6 +5,7 @@
 # Shared by generated-files.sh and commands.sh: runs the Ruby gem (the oracle)
 # and the binary on throwaway copies of image repositories, always inside an
 # environment built from scratch whose PATH starts with the fake commands.
+# fleet.sh uses its fakes, excludes, run directory and records only.
 # Sourced, never executed. See README.md.
 
 # One root, under the owner's scratch area, never the repositories. A caller
@@ -99,6 +100,17 @@ oracle_init() {
   CHILD_PATH="${FAKE_DIR}:${RUBY%/*}:/usr/bin:/bin"
   CHILD_HOME="${ORACLE_ROOT}/home"
 
+  oracle_make_run_dir "${script}"
+  mkdir -p "${CHILD_HOME}"
+
+  oracle_self_check
+}
+
+# oracle_make_run_dir <script name> : sets RUN_DIR to ORACLE_ROOT/<script>,
+# takes its lock and recreates it empty, with its repos/, rec/ and work/.
+# Shared by every script of this directory (fleet.sh included).
+oracle_make_run_dir() {
+  local script=$1
   RUN_DIR="${ORACLE_ROOT}/${script}"
   case "${RUN_DIR}" in
     *..*) oracle_die "refusing to recreate ${RUN_DIR}" ;;
@@ -114,9 +126,7 @@ oracle_init() {
   # shellcheck disable=SC2064 # expanded now on purpose: the path is known here
   trap "rmdir '${RUN_DIR}.lock' 2>/dev/null" EXIT
   rm -rf "${RUN_DIR}"
-  mkdir -p "${RUN_DIR}/repos" "${RUN_DIR}/rec" "${RUN_DIR}/work" "${CHILD_HOME}"
-
-  oracle_self_check
+  mkdir -p "${RUN_DIR}/repos" "${RUN_DIR}/rec" "${RUN_DIR}/work"
 }
 
 # Proves, inside the exact environment the children get, that the commands

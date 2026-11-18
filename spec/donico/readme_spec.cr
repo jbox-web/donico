@@ -22,6 +22,12 @@ require "json"
 #   <!-- script debuerreotype -->       the build script of trixie on amd64,
 #                                       one command per line
 #
+# The fleet section has two markers of its own:
+#
+#   <!-- donico-manager.yml -->   a complete donico-manager.yml, loaded through
+#                                 Fleet::Manifest.load
+#   <!-- donico-manager help -->  the output of `donico-manager --help`
+#
 # A block without a marker is a fragment or a shell session and is not loaded.
 private README_PATH = File.join(__DIR__, "..", "..", "README.md")
 
@@ -116,6 +122,43 @@ private def with_rootfs_example(args : Array(String), & : String, String ->) : N
 end
 
 describe "README.md" do
+  describe "the fleet commands" do
+    it "lists what `donico-manager --help` prints" do
+      blocks = readme_blocks("donico-manager help")
+      blocks.size.should eq(1)
+
+      with_tmp_dir do |dir|
+        run = run_fleet_in(dir, ["--help"])
+        run.code.should eq(0)
+        run.stdout.rstrip.should eq(blocks.first.rstrip)
+      end
+    end
+
+    it "loads the donico-manager.yml example through Fleet::Manifest.load, with the values its text announces" do
+      blocks = readme_blocks("donico-manager.yml")
+      blocks.size.should eq(1)
+
+      with_fleet(blocks.first) do |env|
+        manifest = Donico::Fleet::Manifest.load(env)
+        manifest.registry.should eq("registry.example.org/base")
+        manifest.workspace.should eq("docker-images")
+        manifest.clone_url("ruby").should eq("git@git.example.org:images/ruby.git")
+        manifest.images.should eq(["base", "grafana", "postgres", "ruby", "traefik"])
+        manifest.categories.should eq(["Base images", "Web", "Databases"])
+        manifest.check_versions?("base").should be_false
+        manifest.bump_donico?("base").should be_false
+        manifest.constraint("postgres").should eq("17")
+        manifest.pinned?("traefik").should be_true
+        {"grafana", "ruby"}.each do |name|
+          manifest.check_versions?(name).should be_true
+          manifest.bump_donico?(name).should be_true
+          manifest.constraint(name).should be_nil
+          manifest.pinned?(name).should be_false
+        end
+      end
+    end
+  end
+
   describe "the debuerreotype example" do
     it "is the one donico.yml of its section, with the values its text announces" do
       blocks = readme_blocks("donico.yml debuerreotype")

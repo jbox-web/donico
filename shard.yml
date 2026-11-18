@@ -19,6 +19,19 @@ targets:
   donico:
     main: src/donico.cr
 
-# Zero dependencies: the stdlib only. Anything added under `dependencies:`
-# would break that contract and must be discussed first. ameba is a mise tool
-# (see mise.toml), not a development_dependency.
+dependencies:
+  crest:
+    github: mamantoha/crest
+    version: ~> 1.9.0
+  termisu:
+    github: omarluq/termisu
+    version: ~> 0.7.0
+
+# crest: the HTTPS client of the fleet commands (`donico-manager repos update`
+# asks the GitHub API for upstream versions), chosen by the owner over the
+# stdlib client. It brings http_proxy, http-client-digest_auth and cookie_jar
+# (http-cookie_jar upstream), and the binary now links OpenSSL.
+# termisu: the text interface of `donico-manager repos update` (raw mode, the
+# alternate screen, keys, cell drawing), MIT, no dependency of its own; its
+# `Termisu::Testing` drives the binary on a pseudo-terminal in the specs.
+# ameba is a mise tool (see mise.toml), not a development_dependency.

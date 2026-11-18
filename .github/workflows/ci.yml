@@ -5,8 +5,9 @@ name: CI
 # build_static_binaries job, since this project ships binaries.
 #
 # Two deliberate differences from the template: the `paths` filters below, and
-# no OpenSSL step in the macOS legs (donico links the stdlib only, so
-# .crystalreleaser.yml has no static_libs).
+# an OpenSSL step in the two macOS test legs as well (donico links OpenSSL
+# through crest, so its development build needs the formula too, where the
+# template only installs it for the release build).
 
 permissions: {}
 
@@ -161,6 +162,13 @@ jobs:
         if: runner.os == 'macOS'
         run: mise dev:fix-shards-command
 
+      # The OpenSSL static_libs links (see .crystalreleaser.yml), as in the
+      # macOS jobs of release.yml. Remove with static_libs when the project
+      # does not link OpenSSL.
+      - name: Install OpenSSL 4
+        if: runner.os == 'macOS'
+        run: brew install openssl@4
+
       - name: Build static binaries
         run: mise release:static
 
@@ -286,6 +294,12 @@ jobs:
       - name: Fix Crystal shards
         run: mise dev:fix-shards-command
 
+      # Documented difference from the template: crest makes the build link
+      # OpenSSL, which the mise-installed Crystal does not embed and the macOS
+      # runners do not provide in the version the link needs.
+      - name: Install OpenSSL 4
+        run: brew install openssl@4
+
       - name: Install dependencies
         run: mise dev:deps
 
@@ -310,6 +324,12 @@ jobs:
       # TODO: remove me when https://github.com/crystal-lang/crystal/issues/16746 is fixed
       - name: Fix Crystal shards
         run: mise dev:fix-shards-command
+
+      # Documented difference from the template: crest makes the build link
+      # OpenSSL, which the mise-installed Crystal does not embed and the macOS
+      # runners do not provide in the version the link needs.
+      - name: Install OpenSSL 4
+        run: brew install openssl@4
 
       - name: Install dependencies
         run: mise dev:deps

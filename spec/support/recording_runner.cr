@@ -21,7 +21,8 @@ class RecordingRunner < Donico::Runner
   end
 
   # Queues the answer of the next call that returns a status (every kind but
-  # `forward`).
+  # `forward` and `detach`, which answer nothing: a scripted result is not
+  # consumed by them).
   def script(code : Int32 = 0, text : String = "") : self
     @lock.synchronize { @results << Result.new(code, text) }
     self
@@ -43,6 +44,10 @@ class RecordingRunner < Donico::Runner
   def output(command : String, args : Array(String), env : Vars = Vars.new) : {Int32, String}
     result = next_result(:output, command, args, env)
     {result.code, result.text}
+  end
+
+  def detach(command : String, args : Array(String)) : Nil
+    @lock.synchronize { @calls << Call.new(:detach, command, args, Vars.new) }
   end
 
   def forward(signal : Signal) : Nil

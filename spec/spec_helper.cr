@@ -19,6 +19,15 @@ def run_cli_in(dir : String, args : Array(String)) : CliRun
   CliRun.new(code, stdout.to_s, stderr.to_s)
 end
 
+# Runs the fleet command line (donico-manager) as if launched from `dir`, on
+# exactly the given variables.
+def run_fleet_in(dir : String, args : Array(String), vars : Hash(String, String) = {} of String => String) : CliRun
+  stdout = IO::Memory.new
+  stderr = IO::Memory.new
+  code = Donico::Fleet::CLI.new(stdout, stderr, dir, vars).run(args)
+  CliRun.new(code, stdout.to_s, stderr.to_s)
+end
+
 # Yields an empty temporary directory, removed afterwards: a project directory
 # without a donico.yml.
 def with_tmp_dir(& : String ->) : Nil

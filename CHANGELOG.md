@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The fleet commands of the `donico-manager` Ruby gem, in the binary. Called
+  `donico-manager` (a symbolic link to it, which the archives, the .deb and
+  .rpm packages, the Homebrew formula and the aqua entry install beside
+  `donico`), the binary works on a whole fleet of image repositories
+  described by a `donico-manager.yml`, read unchanged: `bump-donico`,
+  `update-readme`, `heritage`, and under `repos`: `update` (the interactive
+  screen that follows the upstream versions of the images, over the GitHub
+  API), `list`, `clone`, `status`, `diff`, `pull`, `gc`, `update-readme`,
+  `open-upstream`, `check-hadolint` and `check-security-spec`. Documented in
+  the README ("Fleet commands").
+- Two dependencies, the first ones: crest, the HTTPS client of `repos
+  update` (with the shards it brings), and Termisu, its text interface.
+  OpenSSL is linked statically into every binary, Homebrew's OpenSSL 4 on
+  macOS; the .deb and .rpm packages depend on `ca-certificates`.
+- CA certificates of the GitHub requests: on macOS, where the statically
+  linked OpenSSL looks in the build machine's Homebrew prefix, the system
+  bundle `/etc/ssl/cert.pem` is used when Homebrew's `openssl@4` store is
+  absent; `SSL_CERT_FILE` and `SSL_CERT_DIR` are also read from the `.env` of
+  the configuration repository.
+- `scripts/oracle/fleet.sh` compares the fleet commands with the gem, and
+  `scripts/oracle/static-smoke.sh` runs one fleet command with the static
+  binary.
+
+### Differences from the `donico-manager` gem
+
+Listed in the README ("Coming from the `donico-manager` gem"):
+
+- `clone`, `update-image-readmes` become `repos clone [REPO]` and `repos
+  update-readme [REPO]`, `repos open-upstream` takes `[REPO]`; `clean`,
+  `lint-commits`, `completions`, `version`, `--tree`, `repos reconcile` and
+  `repos check-versions` are gone. `commit_linter` is ignored.
+- The image README says `donico help` where the gem wrote `bin/rake help`.
+- `bump-donico` pins the binary in `mise.toml` instead of writing a
+  `Gemfile` (the `"github:jbox-web/donico"` or `"aqua:jbox-web/donico"` line,
+  each keeping its backend), skips a repository without that pin (`= <name>:
+  no donico pin in mise.toml`), and takes the version of the running binary
+  only.
+- Regeneration and `check-hadolint` run inside the binary. `repos update`
+  fails an image pinned to another donico version.
+- Errors are one line, `donico-manager: <message>`, status 1.
+- The rewritten file (`mise.toml`, `donico.yml`) is restored when a
+  regeneration fails, so the repository is not left modified.
+- A refused `git add` or commit is a failure, and that repository is not
+  pushed.
+- `--help` is read anywhere on the line.
+- The terminal check of `repos update` is the controlling terminal
+  (`/dev/tty`): `donico-manager repos update > file` opens the interface
+  where the gem refused.
+- In `repos update`, a failure of the configuration repository stays on
+  screen, the root README commit takes `README.md` only, `p` pushes every
+  batch applied, and an image already committed can no longer be selected.
+- The `.env` of the configuration repository is read with donico's own
+  parser (plain `KEY=VALUE`, nothing interpolated).
+- `git` absent from the `PATH` is one error line that stops a sweep.
+- An invalid `todo.yml` is refused before the root README is written.
+- A TERM, HUP or INT signal during the apply phase of `repos update` stops
+  between two steps: images already bumped stay modified and uncommitted (and
+  the configuration repository's README may be), and the next scan no longer
+  offers them, their `donico.yml` holding the new version. Find them with
+  `donico-manager repos status`, then commit or `git checkout -- .` in each.
+
 ## [3.1.0] - 2026-11-18
 
 ### Added
