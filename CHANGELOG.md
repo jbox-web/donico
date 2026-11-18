@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-11-18
+
 First release of the Crystal rewrite of the Ruby gem. The numbering restarts at
 3.0.0 so that it cannot be confused with the `2.0.x` gems. Same contract as the
 gem: for the same `donico.yml`, the same generated files, the same docker
