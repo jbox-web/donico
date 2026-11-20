@@ -36,8 +36,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Differences from the `donico-manager` gem
 
-Listed in the README ("Coming from the `donico-manager` gem"):
-
 - `clone`, `update-image-readmes` become `repos clone [REPO]` and `repos
   update-readme [REPO]`, `repos open-upstream` takes `[REPO]`; `clean`,
   `lint-commits`, `completions`, `version`, `--tree`, `repos reconcile` and
@@ -98,7 +96,7 @@ Listed in the README ("Coming from the `donico-manager` gem"):
     jobs of one pipeline agree on the tarballs across midnight.
   - `generate-files` writes the CI matrix alone, `matrix` prints the rows of
     this backend, `image-builder` prints `debuerreotype`.
-  - Differences from danico, listed in the README ("Coming from danico"):
+  - Differences from danico:
     `donico.yml` instead of `danico.yml`, a quoted `version`, `archs` written
     as platforms (`linux/amd64`), donico's task names, the proxy used whenever
     `apt_proxy` is set, no Docker Hub default for the debuerreotype image,

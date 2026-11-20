@@ -582,7 +582,7 @@ images themselves: a Debian root filesystem made by
 [debuerreotype](https://github.com/debuerreotype/debuerreotype), once per
 architecture, each one packed as a tarball; the tarballs are then assembled into
 one multi-arch image, `<registry>/<distro>`, and pushed. It replaces "danico",
-the Rakefile that used to do this (see [Coming from danico](#coming-from-danico)).
+the Rakefile that used to do this.
 
 The recipe, that is the list of debuerreotype commands, is part of the binary:
 the repository holds no script. It holds:
@@ -818,49 +818,6 @@ image repository. `donico matrix` prints, for the same example on 2026-11-18:
 
 Neither the proxy nor the debootstrap mirror is printed: either URL may carry
 credentials.
-
-### Coming from danico
-
-For the same row and the same arch, the build script is the one danico rendered
-from `templates/debian-build.erb`, byte for byte, and the `docker run` and
-`docker buildx build` command lines are those of its `bin/build` and
-`bin/push`. What changes in a repository:
-
-1. **`danico.yml` becomes `donico.yml`**, with `image_builder: debuerreotype`
-   added.
-2. **`version` is quoted** (`"13"`), and **`archs` are platforms**
-   (`linux/amd64` where danico had `amd64`). An explicit `timestamp` is quoted
-   too.
-3. **Task names are donico's**: `<distro>:<version>:build`, `:push` and
-   `:clean`, where danico had `<distro>:build`. The per-arch tasks
-   (`<distro>:<arch>:build`) are gone: `build` and `clean` always cover every
-   arch of the row.
-4. **`rake generate_matrix` becomes `donico generate-files`**, and the rows of
-   `.matrix.yml` gain `VERSION`.
-5. **The proxy follows `apt_proxy`.** It is used when the key is set, unless
-   `ENABLE_APT_PROXY=false`. danico used it when `ENABLE_APT_PROXY` was
-   `true`, which was the default in one fleet and not in the other, and with
-   the variable `true` and no `apt_proxy` it exported an empty `http_proxy`. A
-   repository that keeps `apt_proxy` and does not want the proxy sets
-   `ENABLE_APT_PROXY=false`, or removes the key.
-6. **`debuerreotype_image` defaults to `<tools_registry>/debuerreotype:latest`**
-   instead of `debuerreotype/debuerreotype:0.12` on Docker Hub: no registry
-   host is built into donico.
-7. **The default timestamp follows the pipeline under GitLab CI**: the day
-   before `CI_PIPELINE_CREATED_AT`, so that `build` and `push` agree when
-   midnight falls between them. danico took the day before each job ran.
-8. **`push` reads the Debian version from the tarball of the first arch** of
-   the row, where danico read the `amd64` one whatever the row held, and it
-   checks every tarball before starting.
-9. **`build` returns the exit status of the failed `docker run`**, where rake
-   returned 1. It refuses to start over a build directory left by an earlier
-   build, where danico failed in the container, and it stops its container
-   when it is interrupted.
-10. **Only the platforms listed under `archs` are accepted**, each with its
-    Debian name; danico took any name and translated `386` alone.
-11. **Delete** `Rakefile`, `Gemfile`, `Gemfile.lock`, `bin/rake`, `bin/build`,
-    `bin/push`, `bin/clean` and `templates/debian-build.erb`. Keep the
-    `Dockerfile`, `config/apt/` and `build/.gitkeep`.
 
 ## `donico matrix`
 
@@ -1283,56 +1240,6 @@ stay modified, as may the root README of the configuration repository. Their
 them: nothing reports them. Find them with `donico-manager repos status` (and
 `git status` in the configuration repository), then in each either commit the
 change by hand or put it back with `git checkout -- .`.
-
-### Coming from the `donico-manager` gem
-
-Same `donico-manager.yml`, same lines, same generated READMEs and heritage tree
-(the checks are in `scripts/oracle/fleet.sh`). What changes:
-
-1. **Command names.** `clone` becomes `repos clone [REPO]`,
-   `update-image-readmes` becomes `repos update-readme [REPO]`, and `repos
-   open-upstream` takes `[REPO]`. `clean`, `lint-commits`, `completions`,
-   `version` (use `--version`), `--tree`, `repos reconcile` and `repos
-   check-versions` are gone.
-2. **The image README says `donico help`** where the gem wrote `bin/rake help`.
-3. **`bump-donico` edits `mise.toml`** instead of writing a `Gemfile`, and its
-   commit body names `mise.toml`; `templates/donico/Gemfile` is no longer read.
-   The pin is the `"github:jbox-web/donico"` or `"aqua:jbox-web/donico"` line;
-   a repository without one is skipped (`= <name>: no donico pin in
-   mise.toml`, where the gem said `no donico Gemfile`), and `VERSION` must be
-   the version of the running binary.
-4. **Regeneration and `check-hadolint` run inside the binary**, not through the
-   repository's own tooling, so they also work on a repository that still has
-   its `Rakefile`. `repos update` fails an image pinned to another donico
-   version, whose files this binary would regenerate.
-5. **Errors are one line**, `donico-manager: <message>`, status 1.
-6. **The rewritten file is restored when a regeneration fails** (`mise.toml` in
-   `bump-donico`, `donico.yml` in `repos update`): the repository is left as
-   it was, where the gem left it modified, and refused on the next run.
-7. **A refused `git add` or commit is a failure** (`! <name>: commit failed:
-   <message>`), and that repository is not pushed. The gem dropped that result.
-8. **`--help` anywhere on the line** prints the usage, where an unknown option
-   is otherwise refused.
-9. **The terminal check is the controlling terminal** (`/dev/tty`), not
-   stdout: `donico-manager repos update > file` opens the interface where the
-   gem refused. The refusal no longer mentions `repos check-versions`.
-10. **In `repos update`**, a failed commit or push of the configuration
-    repository stays on screen after the batch, where the gem showed it for
-    an instant; the root README commit takes `README.md` only, never what was
-    already staged there; after a second apply, `p` pushes every batch
-    applied, not only the last; and an image whose commit is made can no
-    longer be selected, where the gem applied it again and failed it.
-11. **The `.env` of the configuration repository is read with donico's own
-    parser**: plain `KEY=VALUE`, nothing interpolated (see
-    [The `.env` file](#the-env-file)). The gem used the dotenv gem.
-12. **`git` absent from the `PATH` is one error line**
-    (`donico-manager: git not found in PATH`) that stops a sweep, where the
-    gem counted every repository as failed.
-13. **An invalid `todo.yml` is refused before anything is written**
-    (`donico-manager: todo.yml: invalid YAML.`), where the gem truncated the
-    root README, then crashed.
-
-Anything else that differs from the gem is a bug: please report it.
 
 ## Development
 

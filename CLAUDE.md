@@ -16,13 +16,13 @@ The same binary, started as `donico-manager` (a symlink; `mise dev:build`
 writes `bin/donico-manager`), is the fleet tool: it rewrites the
 `donico-manager` Ruby gem, which works on a whole fleet of image repositories
 described by a `donico-manager.yml`. That gem is the contract of the fleet
-side in the same way; its deliberate differences are listed in the README
-("Coming from the `donico-manager` gem").
+side in the same way; its deliberate differences are listed in `CHANGELOG.md`
+(3.2.0, "Differences from the `donico-manager` gem").
 
 A second backend, `image_builder: debuerreotype`, builds Debian base images
 from nothing. It was never part of the gem: its contract is "danico", the
 Rakefile of the `debian-base` image repositories (build script and docker
-command lines identical; differences in the README, "Coming from danico").
+command lines identical; differences in `CHANGELOG.md`, 3.1.0).
 
 ## Commands
 
