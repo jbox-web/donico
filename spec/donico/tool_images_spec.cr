@@ -8,10 +8,21 @@ end
 private MINIMAL = "registry: r.example/base\nimage_name: foo\n"
 
 describe Donico::ToolImages do
-  it "derives both images from registry alone" do
+  it "takes the public images when no key names another one" do
     tools = tools_from(MINIMAL)
-    tools.docker_linter.should eq "r.example/base/hadolint:latest"
-    tools.inspec.should eq "r.example/base/inspec:latest"
+    tools.docker_linter.should eq "hadolint/hadolint:v2.15.1"
+    tools.inspec.should eq "cincproject/auditor:7"
+  end
+
+  it "does not look for the tools under registry" do
+    tools = tools_from("registry: harbor.example/fleet/base\nimage_name: foo\n")
+    tools.docker_linter.should_not start_with "harbor.example/"
+    tools.inspec.should_not start_with "harbor.example/"
+  end
+
+  it "counts an empty tools_registry as absent" do
+    tools = tools_from(MINIMAL + "tools_registry: \"\"\n")
+    tools.docker_linter.should eq "hadolint/hadolint:v2.15.1"
   end
 
   it "moves both images with tools_registry" do
@@ -23,7 +34,7 @@ describe Donico::ToolImages do
   it "lets docker_linter win for the linter only" do
     tools = tools_from(MINIMAL + "docker_linter: x.example/lint:1\n")
     tools.docker_linter.should eq "x.example/lint:1"
-    tools.inspec.should eq "r.example/base/inspec:latest"
+    tools.inspec.should eq "cincproject/auditor:7"
   end
 
   it "lets inspec_image win for Inspec only" do
@@ -35,8 +46,8 @@ describe Donico::ToolImages do
   describe "the debuerreotype image" do
     rootfs = "registry: r.example/debian\nimage_builder: debuerreotype\nmatrix:\n  - {distro: trixie, version: \"13\"}\n"
 
-    it "lives under registry by default" do
-      tools_from(rootfs).debuerreotype.should eq "r.example/debian/debuerreotype:latest"
+    it "is the public image by default" do
+      tools_from(rootfs).debuerreotype.should eq "debuerreotype/debuerreotype:0.17"
     end
 
     it "moves with tools_registry" do

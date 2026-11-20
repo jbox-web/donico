@@ -17,12 +17,14 @@ module Donico
         outputs = [] of String
 
         @config.dockerfiles.each do |file|
-          # The working directory stays inside /app on purpose: hadolint looks
-          # for the project's .hadolint.yaml there. Mounting elsewhere hid
-          # that file, and the lint reported rules the project had waived.
+          # The working directory is /app on purpose: hadolint looks for the
+          # project's .hadolint.yaml there. It is set here, not left to the
+          # image: the public hadolint image works in /, where the lint
+          # reported rules the project had waived.
           code, text = @runner.capture("docker", [
             "run", "--pull", "always", "--rm",
             "-e", "MISE_IGNORED_CONFIG_PATHS=/app/mise.toml",
+            "--workdir", "/app",
             "-v", "#{@env.dir}:/app", @docker_linter, "hadolint", file,
           ])
           failed = true unless code == 0

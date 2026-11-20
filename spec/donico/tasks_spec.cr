@@ -378,14 +378,14 @@ describe "Donico::CLI matrix tasks" do
     end
   end
 
-  it "dispatches <distro>:<version>:test to the harness with the Inspec image of the tools registry" do
+  it "dispatches <distro>:<version>:test to the harness with the public Inspec image, the project naming none" do
     with_project(YAML_MINIMAL) do |env|
       runner = RecordingRunner.new.script(0, "cid").script(4)
 
       run = run_with_recorder(env, ["buster:latest:test"], runner)
 
       run.code.should eq 4
-      runner.calls[1].args.should contain "registry.example.net/images/base/inspec:latest"
+      runner.calls[1].args.should contain "cincproject/auditor:7"
       runner.calls[1].args.should contain "docker://cid"
     end
   end
@@ -410,7 +410,7 @@ describe "Donico::CLI matrix tasks" do
 end
 
 describe "Donico::CLI inspec" do
-  it "runs the harness on the mode, the image and the inputs, with the Inspec image of the project" do
+  it "runs the harness on the mode, the image and the inputs, with the public Inspec image, the project naming none" do
     with_project(YAML_MINIMAL) do |env|
       runner = RecordingRunner.new.script(0, "cid").script(6)
 
@@ -418,7 +418,7 @@ describe "Donico::CLI inspec" do
 
       run.code.should eq 6
       runner.calls[0].args[3].should eq "img:1"
-      runner.calls[1].args.should contain "registry.example.net/images/base/inspec:latest"
+      runner.calls[1].args.should contain "cincproject/auditor:7"
       runner.calls[1].args.last(3).should eq ["--input", "a=1", "b"]
       runner.calls[1].env.should eq({"a" => "1", "b" => "b"})
     end

@@ -13,7 +13,7 @@ private YAML_MANY = <<-YAML
   YAML
 
 private def lint_args(dir : String, file : String) : Array(String)
-  ["run", "--pull", "always", "--rm", "-e", "MISE_IGNORED_CONFIG_PATHS=/app/mise.toml",
+  ["run", "--pull", "always", "--rm", "-e", "MISE_IGNORED_CONFIG_PATHS=/app/mise.toml", "--workdir", "/app",
    "-v", "#{dir}:/app", "tools/hadolint:1", "hadolint", file]
 end
 

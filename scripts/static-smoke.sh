@@ -2,8 +2,7 @@
 # shellcheck shell=bash
 #
 # Proves that the static Linux binary does what the native one does, beyond
-# `--version`: the specs and the oracle scripts only ever ran the native
-# binary. The same fixed list of commands runs once with the native binary on
+# `--version`: the specs only ever run the native binary. The same fixed list of commands runs once with the native binary on
 # the host and once with the Linux binary inside a throwaway alpine:3.24
 # container of the given platform; exit statuses, stdout, stderr, the calls
 # the fake docker received and the generated files are then compared. One
@@ -19,9 +18,27 @@
 # pullable once), and the container is removed (`--rm`). Every command runs
 # under `env -i`: nothing of the caller's environment reaches the binaries.
 #
+# The project is one of the script's own (two rows, a `.inspecrc`,
+# `test_variants`, `login_env`, build args, no secret, no `.env`), which is
+# also the configuration repository of a two-image fleet. The list: `help`,
+# `generate-files`, `matrix`, `image-builder`, the `build`, `push`, `test`,
+# `clean` and `login` tasks of the rows, an unknown task, `lint-dockerfile`, a
+# `test` where the fake docker fails the Inspec call with status 100, and
+# `donico-manager repos list`.
+#
+# Compared per command: exit status, stdout, stderr and the fake's call log,
+# then the two generated files, after replacing the project path by
+# `<project>` (the only normalisation). The report is one `same` or
+# `DIFFERENT` line per command and file, then `N compared, M different`.
+#
 # Exits 1 on any difference, and when a side did not produce what the
-# comparison needs (an equal pair of empty results proves nothing). See
-# README.md.
+# comparison needs (an equal pair of empty results proves nothing): the build
+# made no `buildx` call, the failing run did not exit 100, `generate-files`
+# wrote nothing, `repos list` did not list the fleet.
+#
+# The binaries come from `mise dev:build` and `mise release:static`:
+#
+#   scripts/static-smoke.sh bin/donico dist/<linux binary> linux/amd64
 
 set -o nounset
 set -o pipefail
@@ -65,8 +82,8 @@ ln -s "${NATIVE}" "${WORK}/host-alias/donico-manager"
 ln -s /usr/local/bin/donico "${WORK}/linux-alias/donico-manager"
 
 # The fake docker: logs one `--- call` line then one line per argument, prints
-# a container id for the start, and fails an `inspec exec` with the status in
-# FAKE_FAIL_INSPEC when it is set. /bin/sh only: busybox runs it too.
+# a container id for the start, and fails the Inspec call (the one started
+# with `--entrypoint inspec`) with the status in FAKE_FAIL_INSPEC when it is set. /bin/sh only: busybox runs it too.
 cat >"${WORK}/fake/docker" <<'FAKE'
 #!/bin/sh
 {
@@ -80,7 +97,7 @@ case "$*" in
     echo fakecontainer0001
     exit 0
     ;;
-  *"inspec exec"*)
+  *"--entrypoint inspec "*)
     if [ -n "${FAKE_FAIL_INSPEC:-}" ]; then
       exit "$FAKE_FAIL_INSPEC"
     fi

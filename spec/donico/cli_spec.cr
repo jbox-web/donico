@@ -333,7 +333,7 @@ describe "Donico::CLI runner" do
 end
 
 describe "Donico::CLI lint-dockerfile" do
-  it "runs the linter image of the project on its Dockerfile, mounting the project directory" do
+  it "runs the public linter image on the Dockerfile of a project that names none, mounting the project directory" do
     with_project("registry: r.example\nimage_name: foo\nmatrix:\n  - {version: \"1\", distro: d}\n") do |env|
       runner = RecordingRunner.new
       factory = ->(_env : Donico::Env) { runner.as(Donico::Runner) }
@@ -344,8 +344,8 @@ describe "Donico::CLI lint-dockerfile" do
       code.should eq 0
       stdout.to_s.should eq "Dockerfile is OK!\n"
       runner.calls.map(&.args).should eq [[
-        "run", "--pull", "always", "--rm", "-e", "MISE_IGNORED_CONFIG_PATHS=/app/mise.toml",
-        "-v", "#{env.dir}:/app", "r.example/hadolint:latest", "hadolint", "/app/Dockerfile",
+        "run", "--pull", "always", "--rm", "-e", "MISE_IGNORED_CONFIG_PATHS=/app/mise.toml", "--workdir", "/app",
+        "-v", "#{env.dir}:/app", "hadolint/hadolint:v2.15.1", "hadolint", "/app/Dockerfile",
       ]]
     end
   end

@@ -70,7 +70,9 @@ module Donico
     getter image_name : String?
     getter image_builder : String
     getter matrix : Array(MatrixEntry)
-    getter tools_registry : String
+    # Where the tool images live when the project names a registry for them;
+    # nil when it does not (see `ToolImages`).
+    getter tools_registry : String?
     getter docker_linter : String?
     getter inspec_image : String?
 
@@ -116,7 +118,7 @@ module Donico
       @image_builder = image_builder_of(raw)
       @image_name = debuerreotype? ? nil : image_name_of(raw)
       @matrix = matrix_of(raw)
-      @tools_registry = string(raw, "tools_registry") || @registry
+      @tools_registry = string(raw, "tools_registry")
       @docker_linter = string(raw, "docker_linter")
       @inspec_image = string(raw, "inspec_image")
       @apt_proxy = debuerreotype? ? apt_proxy_of(raw) : nil

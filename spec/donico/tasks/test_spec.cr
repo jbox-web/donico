@@ -40,8 +40,9 @@ describe Donico::Tasks::Test do
       logged.should eq [
         "run_cmd: docker run --rm -d foo/1.0/d:20260731 /bin/bash -c while true; do sleep 1; done",
         "with_exit_status: docker run --rm --mount type=bind,source=#{env.dir},target=/app " \
-        "--mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock tools/inspec:1 " \
-        "inspec exec /app/test/ -t docker://cid9 --chef-license accept-silent --no-create-lockfile " \
+        "--mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock " \
+        "--entrypoint inspec tools/inspec:1 " \
+        "exec /app/test/ -t docker://cid9 --chef-license accept-silent --no-create-lockfile " \
         "--show-progress --input #{BASE_INPUTS.join(' ')}",
         "Cleanup docker containers",
         "with_exit_status: docker kill cid9",

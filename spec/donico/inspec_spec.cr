@@ -38,7 +38,7 @@ describe Donico::Inspec do
         {:system, "docker", [
           "run", "--rm", "--mount", "type=bind,source=#{env.dir},target=/app",
           "--mount", "type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock",
-          INSPEC_IMAGE, "inspec", "exec", "/app/test/", "-t", "docker://abc123",
+          "--entrypoint", "inspec", INSPEC_IMAGE, "exec", "/app/test/", "-t", "docker://abc123",
           "--chef-license", "accept-silent", "--no-create-lockfile", "--show-progress",
           "--input", "run_mode=dind", "k=a=b", "flag", "=skipped",
         ], variables},

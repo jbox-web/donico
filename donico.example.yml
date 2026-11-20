@@ -21,10 +21,12 @@ image_name: myapp
 # "Debian root filesystems".
 image_builder: bake
 
-# Where the tool images are looked for: <tools_registry>/hadolint:latest for
-# `lint-dockerfile`, <tools_registry>/inspec:latest for `test` (and
+# A registry of your own for the tool images: <tools_registry>/hadolint:latest
+# for `lint-dockerfile`, <tools_registry>/inspec:latest for `test` (and
 # <tools_registry>/debuerreotype:latest for the `debuerreotype` builder).
-# Default: the value of `registry`.
+# No default: without this key (and without the keys below) donico runs the
+# public images hadolint/hadolint:v2.15.1, cincproject/auditor:7 and
+# debuerreotype/debuerreotype:0.17. It is not taken from `registry`.
 tools_registry: registry.example.com/tools
 
 # Or name each image in full. The InSpec image runs with the docker socket of

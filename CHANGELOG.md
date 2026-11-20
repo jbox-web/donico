@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking: `tools_registry` no longer defaults to `registry`.** A tool image
+  is now its explicit key (`docker_linter`, `inspec_image`,
+  `debuerreotype_image`), else `<tools_registry>/<tool>:latest` when
+  `tools_registry` is written, else a public image. A `donico.yml` that kept
+  its tool images under its `registry` without saying so must add one line,
+  `tools_registry: <the value of registry>`, or it moves to the public images.
+- The public tool images, pinned and bumped with donico:
+  `hadolint/hadolint:v2.15.1`, `cincproject/auditor:7` and
+  `debuerreotype/debuerreotype:0.17` (linux/amd64 only). A project that names
+  no tool image needs none of its own.
+- The InSpec harness starts InSpec with `--entrypoint inspec <image> exec ...`
+  instead of `<image> inspec exec ...`, so the public InSpec images, which
+  declare an entrypoint, work as they are. An image without one, with `inspec`
+  on its `PATH`, runs the same way.
+- `lint-dockerfile` sets the working directory (`--workdir /app`) instead of
+  relying on the linter image: the public hadolint image works in `/`, where
+  the project's `.hadolint.yaml` was not found.
+
+### Removed
+
+- The scripts that compared the binary with the retired Ruby gems
+  (`scripts/oracle/`). `static-smoke.sh` moves to `scripts/static-smoke.sh`.
+- The README section "Coming from the Ruby gem".
+
 ## [3.2.0] - 2026-11-18
 
 ### Added

@@ -137,13 +137,18 @@ module Donico
       end
     end
 
+    # `inspec` is given as the entrypoint, not as the first word of the command:
+    # the public images (cincproject/auditor, chef/inspec) declare an entrypoint
+    # of their own, which would get `inspec exec ...` as its arguments. An image
+    # without one, with `inspec` on its PATH, runs the same way.
     private def run_inspec(id : String, inputs : Array(String), vars : Runner::Vars) : Int32
       args = [
         "run", "--rm",
         "--mount", "type=bind,source=#{@env.dir},target=/app",
         "--mount", "type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock",
+        "--entrypoint", "inspec",
         @inspec_image,
-        "inspec", "exec", "/app/test/", "-t", "docker://#{id}",
+        "exec", "/app/test/", "-t", "docker://#{id}",
         "--chef-license", "accept-silent", "--no-create-lockfile", "--show-progress",
       ]
       args.concat(inspecrc_words)

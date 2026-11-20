@@ -18,8 +18,9 @@ donico bookworm:1.0:push
 It is a single binary: static on Linux; on macOS it loads only libraries every
 Mac has (libSystem, libiconv, libz), OpenSSL being linked in. It reads
 `donico.yml` in the current directory, needs `docker` (with buildx) on the
-`PATH`, and does not know any registry host: every image it uses comes from
-your configuration. The fleet commands also need CA certificates for their
+`PATH`, and runs three public tool images (hadolint, InSpec, debuerreotype)
+unless your configuration names others (see [Tool images](#tool-images)). The
+fleet commands also need CA certificates for their
 HTTPS requests (see [`repos update`](#repos-update)): the .deb and .rpm
 packages depend on `ca-certificates` for that.
 
@@ -290,9 +291,9 @@ matrix:
 | `image_name` | none | Image name: letters, digits, `.`, `_`, `-` and `/`. May be left out when every matrix row sets its own. |
 | `image_builder` | `bake` | `bake`, or `debuerreotype` for [Debian root filesystems](#debian-root-filesystems-image_builder-debuerreotype), which has its own keys and ignores `image_name` and the bake row keys. `docker` is refused with a message of its own. |
 | `matrix` | one row, every default | List of rows (below). |
-| `tools_registry` | the value of `registry` | Where the tool images (hadolint, InSpec, and debuerreotype for that backend) are looked for. |
-| `docker_linter` | `<tools_registry>/hadolint:latest` | The full image run by `lint-dockerfile`. |
-| `inspec_image` | `<tools_registry>/inspec:latest` | The full image run by the InSpec harness. |
+| `tools_registry` | none | A registry of your own for the tool images (hadolint, InSpec, and debuerreotype for that backend): each one is then `<tools_registry>/<tool>:latest`. See [Tool images](#tool-images). |
+| `docker_linter` | `<tools_registry>/hadolint:latest`, else `hadolint/hadolint:v2.15.1` | The full image run by `lint-dockerfile`. |
+| `inspec_image` | `<tools_registry>/inspec:latest`, else `cincproject/auditor:7` | The full image run by the InSpec harness. |
 
 A key written with an empty string (`registry: ""`) counts as not set.
 
@@ -345,10 +346,24 @@ debuerreotype backend has a third one, resolved the same way from
 `debuerreotype_image`). For each, the first match wins:
 
 1. the explicit key: `docker_linter`, `inspec_image`;
-2. `<tools_registry>/hadolint:latest`, `<tools_registry>/inspec:latest`, where
-   `tools_registry` defaults to `registry`.
+2. `<tools_registry>/hadolint:latest`, `<tools_registry>/inspec:latest`, when
+   `tools_registry` is written;
+3. a public image, pinned to a version that is bumped with donico:
+   `hadolint/hadolint:v2.15.1`, `cincproject/auditor:7` (and
+   `debuerreotype/debuerreotype:0.17`).
 
-No host is built into donico. A project whose tool images live elsewhere than
+So a project that names no tool image needs none of its own. `tools_registry`
+has no default: it is not taken from `registry`. A fleet that keeps its tool
+images next to its other images writes one line, with the value of `registry`:
+
+```yaml
+tools_registry: registry.example.com/images
+```
+
+Until 3.2.0 that line was implied; a `donico.yml` that relied on it and does not
+write it moves to the public images.
+
+A project whose tool images live elsewhere than
 under its own `registry` sets one key:
 
 <!-- donico.yml -->
@@ -377,8 +392,9 @@ matrix:
 ```
 
 The InSpec image runs with the docker socket of the host mounted, which gives
-it the control of that docker daemon. `latest` follows whatever is pushed
-under that name: on a shared registry, name the image by its digest
+it the control of that docker daemon. A tag follows whatever is pushed under
+its name, `<tools_registry>/inspec:latest` and the public
+`cincproject/auditor:7` alike: name the image by its digest
 (`inspec_image: registry.example.com/ci/inspec@sha256:...`) so that the one
 that runs is the one that was reviewed.
 
@@ -386,11 +402,11 @@ that runs is the one that was reviewed.
 
 ```sh
 docker run --pull always --rm -e MISE_IGNORED_CONFIG_PATHS=/app/mise.toml \
-  -v <project>:/app <docker_linter> hadolint /app/<dockerfile>
+  --workdir /app -v <project>:/app <docker_linter> hadolint /app/<dockerfile>
 ```
 
-The project is mounted at `/app` and the working directory stays inside it, so
-hadolint finds the project's own `.hadolint.yaml`.
+The project is mounted at `/app`, which is also the working directory, whatever
+the one of the image, so hadolint finds the project's own `.hadolint.yaml`.
 
 ### Several InSpec runs: `test_variants`
 
@@ -520,8 +536,9 @@ bake resolves itself, so donico does not check it.
 2. **Start a container** from the image: `docker run --rm -d <image> /bin/bash
    -c "while true; do sleep 1; done"`, or `bin/inspec-container-up` when the
    project provides it. Its standard output is the container id.
-3. **Run InSpec**, from the InSpec image, against `docker://<container id>`: the
-   project mounted at `/app`, the docker socket mounted, on `/app/test/`, with
+3. **Run InSpec**, from the InSpec image, against `docker://<container id>`:
+   `docker run ... --entrypoint inspec <inspec image> exec /app/test/ ...`, the
+   project mounted at `/app`, the docker socket mounted, with
    `--chef-license accept-silent --no-create-lockfile --show-progress`, the
    words of `.inspecrc` when it exists, and `--input ...` when there are inputs
    (each input is one argument, even if its value holds spaces).
@@ -720,7 +737,7 @@ At the top level, besides `registry` (required) and `tools_registry`:
 | Key | Default | Meaning |
 |---|---|---|
 | `apt_proxy` | none | HTTP proxy the build goes through, for debootstrap and for apt. Used when set, unless `ENABLE_APT_PROXY` is `false` (process environment or `.env`). |
-| `debuerreotype_image` | `<tools_registry>/debuerreotype:latest` | The full image the build runs in. It holds the debuerreotype scripts. |
+| `debuerreotype_image` | `<tools_registry>/debuerreotype:latest`, else `debuerreotype/debuerreotype:0.17` | The full image the build runs in. It holds the debuerreotype scripts. The public one is published for linux/amd64 only: it builds the other architectures of a row through binfmt, and a host of another architecture needs binfmt to run it at all. |
 
 In a matrix row:
 
@@ -973,101 +990,14 @@ Otherwise the exit status is that of the command donico ran: docker's for
 the status of the first `docker run` that failed for `build` (128 + the signal
 number when it was interrupted), docker's for `push` (donico is replaced by it), and that of `rm` or `sudo` for `clean`.
 
-## Coming from the Ruby gem
-
-donico 3 is a rewrite of the Ruby gem. Same `donico.yml`, same task names, same
-generated files, same docker commands, same exit statuses; the 94 `donico.yml`
-files of the fleets it was written for produce byte-identical generated files
-and identical docker commands (the checks are in `scripts/oracle/`). What
-changes, and what to do in a repository:
-
-1. **The `docker` backend is gone.** `image_builder: docker` is refused with a
-   message saying so; the default is now `bake`. Set `image_builder: bake`
-   (or leave it out). A missing `registry` now gets a message that names the key.
-2. **No ERB in `donico.yml`.** The file is plain YAML; nothing in it is
-   evaluated.
-3. **No Rake hooks.** `before`, `after` and `redefine` in a `Rakefile` have no
-   equivalent; the three uses found in practice have keys instead:
-   `test_variants` (run the InSpec suite several times) and `login_env` (pass
-   variables to `login`); downloading the gem before a build is no longer needed.
-   There is no `Rakefile`, `Gemfile`, Bundler binstub or Ruby toolchain in an
-   image repository any more: delete `Rakefile`, `Gemfile`, `Gemfile.lock`,
-   `bin/rake`, `bin/inspec` and the other binstubs, and the `watch_files` entry
-   that ran `bin/rake generate-files`; call `donico <task>` instead of
-   `bin/rake <task>`. `bin/inspec-container-up` and `bin/inspec-container-down`
-   stay: they are the extension points above.
-4. **Tool images from configuration.** The linter and InSpec image hosts were
-   constants of each fleet's fork. They now come from `tools_registry`,
-   `docker_linter` and `inspec_image` (see [Tool images](#tool-images)); with none
-   set they are `<registry>/hadolint:latest` and `<registry>/inspec:latest`, so a
-   repository whose `registry` is that path needs no edit. One that keeps its
-   tools elsewhere sets `tools_registry`.
-5. **`.env` is loaded at start-up** by donico itself, for every task, without
-   overriding variables already set. The `dotenv` gem and the hooks that called
-   it are no longer needed. Plain syntax only (see [The `.env` file](#the-env-file)).
-6. **`donico` instead of `bin/rake`.** `help` and the generated-file warning
-   (`Instead edit donico.yml and run donico generate-files`) say `donico`. The
-   first `generate-files` therefore changes that one line in the committed files.
-7. **Two new commands**, `matrix` and `inspec`, and a `licenses` command.
-8. **Version numbering restarts at 3.0.0**, so it cannot be confused with the
-   `2.0.x` gems. `donico version` prints the version of the binary.
-9. **Error messages are rewritten**: one line, prefixed `donico: `, no Ruby
-   class name (`3.1 (Float)`, `got NilClass`). They carry the same information:
-   the key, the value, what to write instead. A script that matched the old
-   wording must be updated.
-10. **An empty `CI_COMMIT_TIMESTAMP` counts as unset.** The gem failed on it.
-11. **The InSpec harness is part of the binary**, and logs the docker calls it
-    makes (`exec: bin/inspec ...` is gone). The gem executed the repository's
-    `bin/inspec`, in all cases the unmodified binstub of the gem's own harness;
-    it can be deleted.
-12. **`lint-commits` is gone**, and the `commit_linter` key with it (ignored
-    when present). donico deals with images, not commit messages: remove the CI
-    job that runs `lint-commits` and use a commit linter of your own.
-13. **The `exec: ...` log line is always printed**, even when stdout is not a
-    terminal. The gem lost it there, because Ruby did not flush its buffer
-    before replacing the process.
-14. **Captured output is in order**: for `clean` and `lint-dockerfile`, stdout
-    and stderr come out interleaved in the order they were written. The gem
-    returned stdout alone on success and stdout then stderr on failure.
-15. **An InSpec input whose value holds spaces is one argument.** The gem's
-    shell split it into several. None of the known repositories has one.
-16. **`version` is typed by Crystal's YAML parser**, which differs from Ruby's on
-    a few unquoted forms: `1e3` and `0o17` are numbers for Crystal (so refused)
-    and strings for Ruby. Quote the version, which the error message asks for,
-    and the difference disappears.
-17. **Two rows with the same `distro` and `version` are refused** when the file
-    loads. Rake silently merged their tasks.
-18. **Names are checked when the file loads**, where the gem wrote a
-    `docker-bake.hcl` that bake then refused: a `distro` holds letters, digits,
-    `_` and `-`; a `version` the same and `.`; an `image_name` those and `/`;
-    a tag what docker accepts; a build arg name is an identifier. Two rows
-    whose targets collide (`1.0` and `1-0`) are refused, and an empty string
-    counts as a missing value.
-19. **A build arg is declared once, and never under a name donico injects**
-    (`DISTRO_NAME`, `BUILD_DATE`, `<NAME>_VERSION`). The gem wrote both lines
-    and bake kept the last one in alphabetical order of the values.
-20. **A build arg value and a Dockerfile path are plain text**: `${...}` and
-    `%{...}` in them are written so that bake leaves them alone. The gem let
-    bake interpolate them, which failed on a name it did not know. The `src` of
-    a secret file is unchanged: `${HOME}` there is still resolved by bake.
-21. **`<NAME>_VERSION` only holds letters, digits and underscores**: an image
-    named `team/node.js` gets `TEAM_NODE_JS_VERSION`.
-22. **`build` and `push` export `BUILD_DATE` only.** The gem exported every
-    build arg into the environment of docker, where one named `PATH`,
-    `DOCKER_HOST` or `BUILDX_BUILDER` reconfigured the docker client. The
-    values are in `docker-bake.hcl` either way: the build gets the same args.
-
-Anything else that differs from the gem is a bug: please report it.
-
 ## Fleet commands: `donico-manager`
 
 The same binary, called `donico-manager` (the name the packages, the archives,
 Homebrew and aqua install beside `donico`, as a symbolic link), works on a whole
 fleet of image repositories rather than inside one: clone them, run git in
 each, pin them to a donico version, follow the upstream versions of the images
-and regenerate the fleet's documentation. It replaces the `donico-manager` Ruby
-gem, reads the same `donico-manager.yml`, and decides which program it is on the
-name it was started under alone (`ln -s donico donico-manager` is a complete
+and regenerate the fleet's documentation. It reads a `donico-manager.yml`, and
+decides which program it is on the name it was started under alone (`ln -s donico donico-manager` is a complete
 installation).
 
 It runs from the root of a fleet's configuration repository, the repository
@@ -1203,7 +1133,7 @@ version of the binary.
 The interactive screen of the fleet: it looks up the latest upstream version of
 every image (GitHub releases, else tags; the series of `constrain`), shows
 which ones are behind, and applies the chosen updates. Its labels are in
-French, as in the gem. It needs:
+French. It needs:
 
 - `GITHUB_TOKEN`, in the environment or the `.env` of the configuration
   repository: a full scan does not fit in GitHub's anonymous limit of 60
@@ -1266,10 +1196,8 @@ checked the same way, build script included, and so is the fleet section: its
 `donico-manager.yml` is loaded through `Fleet::Manifest.load`, and its list of
 commands is compared with what `donico-manager --help` prints.
 
-The comparison with the Ruby gems is done by three scripts that run both on
-local copies: two for donico on the clones of the image repositories, one for
-`donico-manager` on the fleets' configuration repositories; see
-[scripts/oracle/README.md](scripts/oracle/README.md).
+`scripts/static-smoke.sh` runs a fixed list of commands with a static Linux
+binary of `mise release:static`, against a fake docker; its header says how.
 
 Releases are built by [crystalreleaser](https://github.com/jbox-web/crystalreleaser)
 from `.crystalreleaser.yml`: static linux/amd64 and linux/arm64 binaries built

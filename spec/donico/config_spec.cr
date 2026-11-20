@@ -156,8 +156,8 @@ describe Donico::Config do
       config_from(MINIMAL + "commit_linter: x\n").registry.should eq "registry.example.net"
     end
 
-    it "defaults tools_registry to registry" do
-      config_from(MINIMAL).tools_registry.should eq "registry.example.net"
+    it "leaves tools_registry unset when the key is absent" do
+      config_from(MINIMAL).tools_registry.should be_nil
     end
 
     it "reads tools_registry, docker_linter and inspec_image" do
@@ -208,7 +208,7 @@ describe Donico::Config do
   describe "keys written with no value" do
     it "treats a top-level key set to null as absent" do
       config = config_from("registry: r\nimage_name: foo\ntools_registry:\ndocker_linter: ~\n")
-      config.tools_registry.should eq "r"
+      config.tools_registry.should be_nil
       config.docker_linter.should be_nil
     end
 

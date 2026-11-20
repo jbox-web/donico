@@ -6,23 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 donico is a Crystal CLI (single binary, two direct dependencies, five shards
 linked) that builds, tests, pushes and cleans Docker images described by a
-`donico.yml` matrix. It is a rewrite of a Ruby gem, and **the gem is the
-contract**: for the same `donico.yml`, the generated files, the docker command
-lines and the exit statuses must be identical. The deliberate differences are
-listed in the README ("Coming from the Ruby gem") and in `CHANGELOG.md`;
-anything else that differs is a bug.
+`donico.yml` matrix. It started as a rewrite of a Ruby gem, which is retired:
+the contract is now the README, which the specs read, and the reference
+outputs under `spec/fixtures/`. The files donico generates are committed in
+every image repository, so their format must not change by accident.
 
 The same binary, started as `donico-manager` (a symlink; `mise dev:build`
-writes `bin/donico-manager`), is the fleet tool: it rewrites the
-`donico-manager` Ruby gem, which works on a whole fleet of image repositories
-described by a `donico-manager.yml`. That gem is the contract of the fleet
-side in the same way; its deliberate differences are listed in `CHANGELOG.md`
-(3.2.0, "Differences from the `donico-manager` gem").
+writes `bin/donico-manager`), is the fleet tool: it works on a whole fleet of
+image repositories described by a `donico-manager.yml`.
 
 A second backend, `image_builder: debuerreotype`, builds Debian base images
-from nothing. It was never part of the gem: its contract is "danico", the
-Rakefile of the `debian-base` image repositories (build script and docker
-command lines identical; differences in `CHANGELOG.md`, 3.1.0).
+from nothing. Its build script comes from "danico", the Rakefile of the
+`debian-base` image repositories, and is kept identical to it.
 
 ## Commands
 
@@ -97,12 +92,15 @@ backend.
   INT/TERM, forwards them to the running child and returns 128 + signal; the
   exit-status precedence is documented in the README.
 - Generated files: `Bakefile` (ECR template `bakefile.ecr`, kept byte-compatible
-  with the gem's ERB output; `RubyList` reproduces Ruby's `Array#inspect`, `Hcl`
+  with the reference outputs of `spec/fixtures/generated/`; `RubyList` reproduces Ruby's `Array#inspect`, `Hcl`
   escapes values but leaves `$` alone) and `MatrixFile` (GitLab CI matrix,
   emitting YAML the way Ruby's Psych does). `GenerateFiles` renders both before
   writing either, through temporary files and renames.
-- `ToolImages` resolves the hadolint, InSpec and debuerreotype images from
-  configuration. No registry host is ever built into the binary.
+- `ToolImages` resolves the hadolint, InSpec and debuerreotype images: the
+  explicit key, then `<tools_registry>/<tool>:latest` when `tools_registry` is
+  written, then a public image pinned in `tool_images.cr`. `tools_registry`
+  has no default; it is never taken from `registry`. The harness starts InSpec
+  with `--entrypoint inspec`, so an image with or without an entrypoint works.
 - The debuerreotype backend: `Config#debuerreotype?` switches the validation
   (each backend reads its own keys and ignores the other's; `MatrixEntry` is
   built with `rootfs: true`). `Rootfs` derives the timestamp (the day before
@@ -134,7 +132,7 @@ The flow is `donico-manager.yml` → `Manifest` → `Repos` → a command.
 - `Manifest` parses and validates `donico-manager.yml` (policies per image;
   images always sorted); `Repos` answers which images are cloned in the
   workspace and where. `Sweep` runs one command per cloned repository between
-  the gem's separators; `Color` paints only on a terminal, never with
+  separators; `Color` paints only on a terminal, never with
   `NO_COLOR` or `TERM=dumb` in the fleet's variables.
 - Generators: `Readme` (root README, from `templates/README.md`),
   `ImageReadme`, `Heritage`. They read each image's `donico.yml` as plain
@@ -181,31 +179,25 @@ The flow is `donico-manager.yml` → `Manifest` → `Repos` → a command.
   `<!-- donico-manager.yml -->` and `<!-- donico-manager help -->` for the
   fleet section) and compares it with what the code produces. A behaviour change means updating
   the README in the same change.
-- **Fixtures come from the gem.** `spec/fixtures/generated/` holds the gem's
-  output, not this binary's (see `spec/fixtures/generated/matrix/README.md`).
-  Never regenerate them from `bin/donico`. Likewise `spec/fixtures/debuerreotype/`
-  holds the build scripts Ruby rendered from danico's ERB template (see its
-  README): `rootfs_script.ecr` follows that template line for line, and a
-  change to the recipe is a deliberate break of that equality.
-- **The fixture fleet comes from the donico-manager gem.**
-  `spec/fixtures/fleet/` is a small fleet whose `expected/` files (READMEs,
-  heritage tree) were produced by running the gem on it. Never regenerate
-  them from `bin/donico-manager`: a change to the fixture fleet means running
-  the gem again on a copy of it and copying its output.
+- **Fixtures are frozen reference outputs.** `spec/fixtures/generated/` and
+  the `expected/` files of `spec/fixtures/fleet/` were produced by the retired
+  Ruby gems, not by this binary (see their READMEs). Never regenerate them
+  from `bin/donico` or `bin/donico-manager`: a deliberate change of format is
+  written there by hand, in the same change as the code. Likewise
+  `spec/fixtures/debuerreotype/` holds the build scripts Ruby rendered from
+  danico's ERB template (see its README): `rootfs_script.ecr` follows that
+  template line for line, and a change to the recipe is a deliberate break of
+  that equality.
 - **The debuerreotype build script is shell.** Every value written into it is
   checked when `donico.yml` loads (`MatrixEntry::SCRIPT_WORD`, and the patterns
   of `distro`, `version`, `timestamp` and the `DEBIAN_ARCHS` list). A new value in
   `rootfs_script.ecr` needs the same check.
-- **Oracle scripts** (`scripts/oracle/`, see its README) compare the binary
-  with the gems on local copies of private repositories; they only run on the
-  owner's machine. Three of them: `generated-files.sh` and `commands.sh`
-  (donico gem, image repositories) and `fleet.sh` (donico-manager gem, the
-  fleets' configuration repositories). Never add a normalisation filter there
-  to hide a difference: fix `src/` with a failing spec first. Run
-  `scripts/oracle/self-test.sh <donico gem checkout> <bin/donico>
-  <donico-manager gem checkout> <bin/donico-manager>` after touching `lib.sh`
-  or the scripts. `static-smoke.sh` runs a fixed list of commands, one of them
-  through `donico-manager`, with a static Linux binary of `mise release:static`.
+- **The public tool images are pinned** (`ToolImages::PUBLIC_*`), and named in
+  the README, `donico.example.yml` and the specs: bump them together.
+- `scripts/static-smoke.sh` runs a fixed list of commands, one of them through
+  `donico-manager`, with a static Linux binary of `mise release:static`,
+  against a fake docker. Nothing runs it automatically: run it after a change
+  to a docker command line, which its fake docker may match on.
 - **Version** comes from `shard.yml`, or from `DONICO_VERSION` at compile time
   in a release build (`src/donico/version.cr`). `shard.lock` is tracked on
   purpose so the release build sees a clean tree (no `-dirty`).

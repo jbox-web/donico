@@ -28,25 +28,15 @@ binary: `spec/donico/fleet/readme_spec.cr`, `image_readme_spec.cr` and
 `heritage_spec.cr` compare what `Fleet::Readme`, `Fleet::ImageReadme` and
 `Fleet::Heritage` write with them, byte for byte.
 
-To regenerate them, on a copy of this directory (the gem writes in place),
-with `<gem>` the checkout of the gem and `RUBY` and `BUNDLE` the paths that
-`mise which ruby` and `mise which bundle` print there:
+The one edit made to an expected image README: the line `bin/rake help` became
+`donico help` (this binary has no Rakefile).
 
-```sh
-cp -R spec/fixtures/fleet "$HOME/.local/tmp/fleet-copy" && cd "$HOME/.local/tmp/fleet-copy"
-for command in update-readme update-image-readmes heritage; do
-  BUNDLE_GEMFILE=<gem>/Gemfile LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
-    "$RUBY" "$BUNDLE" exec "$RUBY" -I<gem>/lib -rdonico_manager \
-    -e 'DonicoManager::CLI.start(ARGV)' "$command"
-done
-```
+The gem is retired, so these files are no longer regenerated: they are frozen
+reference outputs. A deliberate change of the format is written here by hand,
+in the same change as the code, and never by copying what `bin/donico-manager` writes,
+which would turn the specs that read them into a comparison of the code with
+itself.
 
-then copy `README.md`, each `docker-images/<image>/README.md` and
-`doc/heritage/image-heritage.md` back into `expected/`. The one edit made to an expected image README: the line
-`bin/rake help` becomes `donico help` (this binary has no Rakefile; design
-section 8, item 2).
-
-If an image directory is added or renamed, every expected file is regenerated
-the same way, the heritage tree included. The heritage tree reads the
-`Dockerfile`s and the manifest's `registries`, which the two README generators
-do not.
+If an image directory is added or renamed, every expected file changes with it,
+the heritage tree included. The heritage tree reads the `Dockerfile`s and the
+manifest's `registries`, which the two README generators do not.

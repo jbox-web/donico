@@ -440,7 +440,7 @@ describe "donico-manager repos open-upstream" do
 end
 
 private def lint_args(dir : String, image : String, dockerfile : String = "/app/Dockerfile") : Array(String)
-  ["run", "--pull", "always", "--rm", "-e", "MISE_IGNORED_CONFIG_PATHS=/app/mise.toml",
+  ["run", "--pull", "always", "--rm", "-e", "MISE_IGNORED_CONFIG_PATHS=/app/mise.toml", "--workdir", "/app",
    "-v", "#{dir}:/app", image, "hadolint", dockerfile]
 end
 
@@ -451,7 +451,7 @@ end
 describe "donico-manager repos check-hadolint" do
   it "lints each cloned repository in process, inside the sweep's lines, as its project directory and with its own tool image" do
     files = {
-      "docker-images/grafana/donico.yml" => donico_yml("grafana"),
+      "docker-images/grafana/donico.yml" => donico_yml("grafana", "tools_registry: tools.example/ci\n"),
       "docker-images/ruby/donico.yml"    => "registry: r.example\nimage_name: ruby\ndocker_linter: lint.example/hadolint:2\n" \
                                          "matrix:\n  - {version: \"1\", distro: d, dockerfile: dockerfiles/d/Dockerfile}\n",
     }
@@ -470,7 +470,7 @@ describe "donico-manager repos check-hadolint" do
       ruby = File.join(env.dir, "docker-images", "ruby")
       recorded.runners.map { |(dir, _)| dir }.should eq [grafana, ruby]
       recorded.runners.map { |(_, runner)| runner.calls.map { |call| {call.kind, call.command, call.args} } }.should eq [
-        [{:capture, "docker", lint_args(grafana, "r.example/hadolint:latest")}],
+        [{:capture, "docker", lint_args(grafana, "tools.example/ci/hadolint:latest")}],
         [{:capture, "docker", lint_args(ruby, "lint.example/hadolint:2", "/app/dockerfiles/d/Dockerfile")}],
       ]
     end
@@ -555,8 +555,8 @@ describe "donico-manager repos check-hadolint" do
       ruby = File.join(env.dir, "docker-images", "ruby")
       run.code.should eq 1
       run.stdout.should eq [
-        SEPARATOR, "Enter in grafana", "run_cmd: docker #{lint_args(grafana, "r.example/hadolint:latest").join(' ')}", SEPARATOR, "",
-        SEPARATOR, "Enter in ruby", "run_cmd: docker #{lint_args(ruby, "r.example/hadolint:latest").join(' ')}", SEPARATOR, "",
+        SEPARATOR, "Enter in grafana", "run_cmd: docker #{lint_args(grafana, "hadolint/hadolint:v2.15.1").join(' ')}", SEPARATOR, "",
+        SEPARATOR, "Enter in ruby", "run_cmd: docker #{lint_args(ruby, "hadolint/hadolint:v2.15.1").join(' ')}", SEPARATOR, "",
         "traefik: not cloned, skipping",
         "2 repository/repositories failed.",
       ].join('\n') + "\n"
