@@ -1,6 +1,8 @@
 # donico
 
 [![CI](https://github.com/jbox-web/donico/actions/workflows/ci.yml/badge.svg)](https://github.com/jbox-web/donico/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/jbox-web/donico?sort=semver)](https://github.com/jbox-web/donico/releases/latest)
+[![License: MIT](https://img.shields.io/github/license/jbox-web/donico)](LICENSE)
 
 donico builds, tests, pushes and cleans Docker images from one
 `donico.yml` file, locally and in CI. You describe the images of a repository as
@@ -929,6 +931,58 @@ An input that starts with a dash would be read as an option: it goes after a
 donico inspec donico myapp/1.0/bookworm:20261117093000 run_mode=dind
 donico inspec donico myapp/1.0/bookworm:20261117093000 -- -odd=value
 ```
+
+## GitHub Actions
+
+[donico-action](https://github.com/jbox-web/donico-action) is the GitHub Action
+of donico: everything a job needs before it runs a task. It installs donico (at
+the version the repository pins in its `mise.toml`, the archive checked against
+the `checksums.txt` of the release), gives the matrix of `donico.yml` in the
+form of `strategy.matrix.include`, and prepares Docker: the daemon to talk to,
+the registry credentials, the binfmt handlers of a multi-platform build and a
+buildx builder. The tasks stay plain `run:` steps:
+
+```yaml
+jobs:
+  matrix:
+    runs-on: ubuntu-24.04
+    outputs:
+      include: ${{ steps.donico.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jbox-web/donico-action@<ref>
+        id: donico
+        with:
+          setup-docker: false
+
+  images:
+    needs: matrix
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.matrix.outputs.include) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jbox-web/donico-action@<ref>
+        with:
+          registry-auth: ${{ secrets.REGISTRY_DOCKER_CONFIG }}
+      - run: donico ${{ matrix.task }}:build
+      - run: donico ${{ matrix.task }}:test
+      - run: donico ${{ matrix.task }}:push
+        if: github.ref_name == 'master'
+```
+
+`<ref>` is a tag or a commit of the action. Each entry of the matrix holds
+`distro`, `version` and `task`, the prefix of the row's task names
+(`bookworm:1.0`).
+
+GitHub Actions sets none of the variables donico reads under GitLab CI, so the
+action sets them for the rest of the job: `CI_COMMIT_TIMESTAMP` to the date of
+the commit being built, so that `build`, `test` and `push` agree on the build
+tag whatever the time they run at, and `CI_PIPELINE_CREATED_AT` for the
+`debuerreotype` backend. Its README lists its inputs, its outputs and what a
+runner must provide.
 
 ## Environment variables read
 
