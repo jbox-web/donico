@@ -123,6 +123,42 @@ describe Donico::Fleet::Readme do
     end
   end
 
+  describe "the CI badge of a row" do
+    it "is the pipeline badge of GitLab by default" do
+      with_fixture_fleet do |env|
+        readme_for(env)
+
+        readme_of(env).lines.find!(&.starts_with?("| [ruby]")).should contain(
+          "| <ul>[![pipeline status](https://gitlab.example.org/factory/images/ruby/badges/master/pipeline.svg)]" \
+          "(https://gitlab.example.org/factory/images/ruby/-/pipelines)</ul> |")
+      end
+    end
+
+    it "is the workflow badge of GitHub Actions when the fleet says forge: github" do
+      with_fixture_fleet do |env|
+        manifest = File.read(File.join(env.dir, "donico-manager.yml"))
+        manifest = manifest.sub("browse_url: https://gitlab.example.org/factory/images", "browse_url: https://github.com/factory")
+        overwrite(env, "donico-manager.yml", "#{manifest}forge: github\n")
+        readme_for(env)
+
+        readme_of(env).lines.find!(&.starts_with?("| [ruby]")).should start_with(
+          "| [ruby](https://github.com/factory/ruby) " \
+          "| <ul>[![workflow status](https://github.com/factory/ruby/actions/workflows/images.yml/badge.svg)]" \
+          "(https://github.com/factory/ruby/actions/workflows/images.yml)</ul> |")
+      end
+    end
+
+    it "names the workflow of ci_workflow" do
+      with_fixture_fleet do |env|
+        manifest = File.read(File.join(env.dir, "donico-manager.yml"))
+        overwrite(env, "donico-manager.yml", "#{manifest}forge: github\nci_workflow: build.yml\n")
+        readme_for(env)
+
+        readme_of(env).lines.find!(&.starts_with?("| [ruby]")).should contain "/ruby/actions/workflows/build.yml/badge.svg)]"
+      end
+    end
+  end
+
   describe "a template that is missing" do
     it "is the error naming it, and the existing README is untouched" do
       with_fixture_fleet do |env|

@@ -1038,6 +1038,8 @@ images:
 | `workspace` | yes | | Directory of the clones, relative to the configuration repository (`../docker-images` and an absolute path work too) |
 | `images` | yes | | The fleet: a bare name, or a name with its policies (below) |
 | `browse_url` | for `update-readme` | | Web address of the group, for the links and badges of the root README |
+| `forge` | no | `gitlab` | `gitlab` or `github`: the shape of the CI badge and of the CI link of each row of the root README (`<browse_url>/<image>/badges/master/pipeline.svg` and `/-/pipelines`, or `<browse_url>/<image>/actions/workflows/<ci_workflow>/badge.svg` and that workflow's page) |
+| `ci_workflow` | no | `images.yml` | With `forge: github`, the file name of the workflow that builds the images |
 | `ci_config_url` | for `repos update-readme` | | Link to the CI variables, quoted in each image README |
 | `categories` | for `update-readme` | `[]` | Sections of the root README, in the order they are rendered |
 | `registries` | for `heritage` | `{}` | `debian_jbox` and `debian_base`: the prefixes the heritage tree turns into virtual parents |

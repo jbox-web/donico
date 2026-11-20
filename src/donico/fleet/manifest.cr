@@ -25,6 +25,14 @@ module Donico
       # typo would silently treat the image like every other one.
       POLICIES = %w[check_versions bump_donico constrain pinned]
 
+      # The forges whose CI badge and CI page the root README knows how to
+      # link to. The first one is the default.
+      FORGES = %w[gitlab github]
+
+      # The workflow file a GitHub fleet builds its images with, unless it
+      # names another one.
+      DEFAULT_CI_WORKFLOW = "images.yml"
+
       # Where the heritage tree is written when the fleet does not say otherwise.
       DEFAULT_HERITAGE_OUTPUT = "doc/image-heritage.md"
 
@@ -38,6 +46,8 @@ module Donico
       getter registries : Hash(String, String)
       getter browse_url : String?
       getter ci_config_url : String?
+      getter forge : String
+      getter ci_workflow : String
       getter heritage_output : String
       getter debian_images : Array(String)
       getter categories : Array(String)
@@ -77,6 +87,8 @@ module Donico
         @registries = string_map(raw, "registries")
         @browse_url = string(raw, "browse_url")
         @ci_config_url = string(raw, "ci_config_url")
+        @forge = forge_of(raw)
+        @ci_workflow = ci_workflow_of(raw)
         @heritage_output = string(raw, "heritage_output") || DEFAULT_HERITAGE_OUTPUT
         @debian_images = string_list(raw, "debian_images")
         @categories = string_list(raw, "categories")
@@ -124,6 +136,19 @@ module Donico
           !value.nil? && value != false
         end
         raise ManifestError.new("#{FILE} is missing: #{missing.join(", ")}.") unless missing.empty?
+      end
+
+      private def forge_of(raw : Hash(YAML::Any, YAML::Any)) : String
+        forge = string(raw, "forge") || return FORGES.first
+        return forge if FORGES.includes?(forge)
+        raise ManifestError.new("#{FILE}: forge must be #{FORGES.join(" or ")}, got: #{forge}.")
+      end
+
+      # A file name, not a path: it is written into a URL of the root README.
+      private def ci_workflow_of(raw : Hash(YAML::Any, YAML::Any)) : String
+        workflow = string(raw, "ci_workflow") || return DEFAULT_CI_WORKFLOW
+        return workflow if workflow.matches?(/\A[A-Za-z0-9][A-Za-z0-9._-]*\z/)
+        raise ManifestError.new("#{FILE}: ci_workflow must be the file name of a workflow, got: #{workflow}.")
       end
 
       # A blank value counts as absent: `browse_url:` with nothing after it is

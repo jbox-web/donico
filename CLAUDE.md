@@ -137,7 +137,9 @@ The flow is `donico-manager.yml` → `Manifest` → `Repos` → a command.
 - Generators: `Readme` (root README, from `templates/README.md`),
   `ImageReadme`, `Heritage`. They read each image's `donico.yml` as plain
   YAML, never through `Config.load`, so an image donico refuses still gets its
-  line. `Regenerate` runs `GenerateFiles` inside the binary.
+  line. `Readme` writes the CI badge of a row in the shape of the manifest's
+  `forge` (`gitlab` or `github`). `Regenerate` runs `GenerateFiles` inside the
+  binary.
 - `DonicoPin` (`bump-donico`) and `Versions::Bumper` (`repos update`) rewrite
   one file, regenerate, and put the file back when the regeneration fails;
   `Versions::Committer` commits and pushes. An `Outcome` (`:ok`, `:skip`,

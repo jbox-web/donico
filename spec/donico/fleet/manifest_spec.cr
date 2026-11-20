@@ -286,6 +286,30 @@ describe Donico::Fleet::Manifest do
       end
     end
 
+    it "takes the fleet for a GitLab one, built by images.yml, unless it says otherwise" do
+      with_fleet(MINIMAL) do |env|
+        manifest = Donico::Fleet::Manifest.load(env)
+        manifest.forge.should eq "gitlab"
+        manifest.ci_workflow.should eq "images.yml"
+      end
+    end
+
+    it "reads the forge and the CI workflow a fleet declares" do
+      with_fleet("#{MINIMAL}forge: github\nci_workflow: build.yml\n") do |env|
+        manifest = Donico::Fleet::Manifest.load(env)
+        manifest.forge.should eq "github"
+        manifest.ci_workflow.should eq "build.yml"
+      end
+    end
+
+    it "refuses a forge it does not know, naming the ones it does" do
+      manifest_error("#{MINIMAL}forge: bitbucket\n").should eq "donico-manager.yml: forge must be gitlab or github, got: bitbucket."
+    end
+
+    it "refuses a ci_workflow that is not a file name" do
+      manifest_error("#{MINIMAL}ci_workflow: ci/build.yml\n").should eq "donico-manager.yml: ci_workflow must be the file name of a workflow, got: ci/build.yml."
+    end
+
     it "reads the documentation settings a fleet declares" do
       extra = <<-YAML
         browse_url:      https://gitlab.example.org/factory/images

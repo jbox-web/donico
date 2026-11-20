@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `donico-manager.yml`: `forge` (`gitlab` by default, or `github`) and
+  `ci_workflow` (`images.yml` by default). With `forge: github`, the root README
+  written by `update-readme` links each image to the badge and the page of
+  its GitHub Actions workflow, instead of the pipeline badge of GitLab.
+
 ## [3.3.0] - 2026-11-20
 
 ### Changed

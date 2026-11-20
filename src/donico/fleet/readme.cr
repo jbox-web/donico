@@ -184,8 +184,7 @@ module Donico
 
       private def render_row(image : String, entry : Entry) : String
         browse_url = @repos.manifest.browse_url.to_s
-        pipelines = "#{browse_url}/#{image}/-/pipelines"
-        badge = "[![pipeline status](#{browse_url}/#{image}/badges/master/pipeline.svg)](#{pipelines})"
+        badge = ci_badge("#{browse_url}/#{image}")
 
         version = ""
         unless entry.github_repo.empty?
@@ -197,6 +196,19 @@ module Donico
         registry = entry.tags.map { |tag| "<li><code>#{tag}</code></li>" }.uniq!.join
 
         "| [#{image}](#{browse_url}/#{image}) | <ul>#{badge}</ul> | <ul>#{version}</ul> | <ul>#{registry}</ul> |"
+      end
+
+      # The CI badge of a repository, linked to its CI page, in the shape of
+      # the fleet's forge: the pipeline badge of GitLab, or the badge of the
+      # fleet's workflow under GitHub Actions.
+      private def ci_badge(repository : String) : String
+        case @repos.manifest.forge
+        when "github"
+          workflow = "#{repository}/actions/workflows/#{@repos.manifest.ci_workflow}"
+          "[![workflow status](#{workflow}/badge.svg)](#{workflow})"
+        else
+          "[![pipeline status](#{repository}/badges/master/pipeline.svg)](#{repository}/-/pipelines)"
+        end
       end
     end
   end
