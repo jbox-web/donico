@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.1] - 2026-11-22
+
 ### Changed
 
 - Under GitLab CI (`GITLAB_CI` is `true`), the build tag and `BUILD_DATE` are
