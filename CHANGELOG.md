@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `repos update-readme`: an image repository may carry `templates/README.md`,
+  the text it keeps by hand. It is inserted in the generated README between
+  the usage and the commands, and the README says below its description that
+  it is generated from that template, so that a bump no longer overwrites it.
+  A template that cannot be read skips its image and leaves its README as it
+  was. An image without it gets the same
+  README as before.
+
 ## [3.4.0] - 2026-11-20
 
 ### Added

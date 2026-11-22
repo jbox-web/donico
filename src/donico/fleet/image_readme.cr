@@ -9,6 +9,14 @@ module Donico
     class ImageReadme
       DEFAULT_DESCRIPTION = "_TODO: ajouter une description dans donico.yml_"
 
+      # The text an image keeps by hand, in its own repository: what the
+      # generator cannot derive from donico.yml (why the image exists, what its
+      # tests check, how it is used) and must not overwrite at each bump.
+      TEMPLATE = "templates/README.md"
+
+      GENERATED_NOTICE = "> ⚠️ **Fichier généré** par `donico-manager repos update-readme` depuis " \
+                         "`#{TEMPLATE}` et `donico.yml`. Ne pas éditer à la main : modifier le gabarit."
+
       def initialize(@repos : Repos, @env : Env)
       end
 
@@ -52,13 +60,29 @@ module Donico
           return false
         end
 
+        template = begin
+          template(path)
+        rescue File::Error
+          @env.stdout.puts "  skip #{image} (#{TEMPLATE} cannot be read)"
+          return false
+        end
+
         readme = File.join(path, "README.md")
-        File.write(readme, generate(image, config))
+        File.write(readme, generate(image, config, template))
         @env.stdout.puts "  updated #{readme}"
         true
       end
 
-      private def generate(image : String, config : Hash(YAML::Any, YAML::Any)) : String
+      # The template of an image, the blank lines around it dropped so that the
+      # README does not depend on how the file starts or ends (the indentation
+      # of its first line is kept); nil when it has none.
+      private def template(path : String) : String?
+        file = File.join(path, TEMPLATE)
+        File.read(file).sub(/\A(?:[ \t]*\n)+/, "").rstrip if File.file?(file)
+      end
+
+      # Without a template, the README is the one the gem wrote, byte for byte.
+      private def generate(image : String, config : Hash(YAML::Any, YAML::Any), template : String?) : String
         image_name = ImageConfig.string?(config, "image_name") || image
         description = ImageConfig.string?(config, "description") || DEFAULT_DESCRIPTION
         category = ImageConfig.string?(config, "category") || "?"
@@ -69,6 +93,7 @@ module Donico
         String.build do |io|
           io << "# " << image_name << "\n\n"
           io << description << "\n\n"
+          io << GENERATED_NOTICE << "\n\n" if template
 
           io << "**Catégorie :** " << category
           io << " · **Upstream :** [" << github_repo << "](https://github.com/" << github_repo << ")" if github_repo && !github_repo.empty?
@@ -79,6 +104,8 @@ module Donico
             tags.each { |tag| io << "- `" << tag << "`\n" }
             io << "\n**Utilisation :**\n\n```dockerfile\nFROM " << tags.first << "\n```\n\n"
           end
+
+          io << template << "\n\n" if template && !template.empty?
 
           io << "## Commandes\n\n```sh\ndonico help\n```\n\n"
           io << "## CI Config\n\n"

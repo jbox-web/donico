@@ -220,6 +220,121 @@ describe Donico::Fleet::ImageReadme do
     end
   end
 
+  # The text an image keeps by hand lives in its templates/README.md, as the
+  # head of the root README lives in the configuration repository: the
+  # generated parts around it keep following donico.yml.
+  describe "an image carrying templates/README.md" do
+    it "inserts the template between the usage and the commands, under a generated-file notice" do
+      with_fixture_fleet do |env|
+        Dir.mkdir_p(File.join(env.dir, "docker-images", "traefik", "templates"))
+        overwrite_image(env, "traefik", "templates/README.md", "## Pourquoi\n\nParce que.\n")
+        image_readmes_for(env, "traefik")
+
+        image_readme_of(env, "traefik").should eq <<-README
+          # traefik
+
+          Reverse proxy and load balancer
+
+          > ⚠️ **Fichier généré** par `donico-manager repos update-readme` depuis `templates/README.md` et `donico.yml`. Ne pas éditer à la main : modifier le gabarit.
+
+          **Catégorie :** web · **Upstream :** [traefik/traefik](https://github.com/traefik/traefik)
+
+          **Tags disponibles :**
+
+          - `harbor.example.org/base/traefik:latest`
+          - `harbor.example.org/base/traefik:3.7.9`
+          - `harbor.example.org/base/traefik:3.7.9-trixie`
+
+          **Utilisation :**
+
+          ```dockerfile
+          FROM harbor.example.org/base/traefik:latest
+          ```
+
+          ## Pourquoi
+
+          Parce que.
+
+          ## Commandes
+
+          ```sh
+          donico help
+          ```
+
+          ## CI Config
+
+          Pour pousser les images Docker vers Harbor un token dédié a été créé, voir les [variables d'environnement du groupe](https://gitlab.example.org/groups/factory/-/settings/ci_cd) pour plus d'informations.
+
+          README
+      end
+    end
+
+    it "writes the same README whatever blank lines end the template" do
+      with_fixture_fleet do |env|
+        Dir.mkdir_p(File.join(env.dir, "docker-images", "traefik", "templates"))
+        readmes = ["## Pourquoi", "## Pourquoi\n", "## Pourquoi\n\n\n"].map do |template|
+          overwrite_image(env, "traefik", "templates/README.md", template)
+          image_readmes_for(env, "traefik")
+          image_readme_of(env, "traefik")
+        end
+
+        readmes.uniq.size.should eq 1
+        readmes.first.should contain "```\n\n## Pourquoi\n\n## Commandes\n"
+      end
+    end
+
+    it "drops the blank lines that start the template" do
+      with_fixture_fleet do |env|
+        Dir.mkdir_p(File.join(env.dir, "docker-images", "traefik", "templates"))
+        overwrite_image(env, "traefik", "templates/README.md", "\n  \n## Pourquoi\n\n    indented\n")
+        image_readmes_for(env, "traefik")
+
+        image_readme_of(env, "traefik").should contain "```\n\n## Pourquoi\n\n    indented\n\n## Commandes\n"
+      end
+    end
+
+    it "skips an image whose template cannot be read, keeps its README, and goes on" do
+      with_fixture_fleet do |env|
+        Dir.mkdir_p(File.join(env.dir, "docker-images", "alloy", "templates"))
+        template = File.join(env.dir, "docker-images", "alloy", "templates", "README.md")
+        File.write(template, "## Pourquoi\n")
+        File.chmod(template, 0o000)
+        overwrite_image(env, "alloy", "README.md", "kept\n")
+        image_readmes_for(env)
+
+        env.stdout.to_s.should contain "  skip alloy (templates/README.md cannot be read)\n"
+        env.stdout.to_s.should end_with "\nDone! 5 README(s) updated, 2 skipped.\n"
+        image_readme_of(env, "alloy").should eq "kept\n"
+        image_readme_of(env, "traefik").should eq expected_fleet_file("docker-images/traefik/README.md")
+      ensure
+        File.chmod(template, 0o644) if template
+      end
+    end
+
+    it "inserts nothing from an empty template, and still says the file is generated" do
+      with_fixture_fleet do |env|
+        Dir.mkdir_p(File.join(env.dir, "docker-images", "traefik", "templates"))
+        overwrite_image(env, "traefik", "templates/README.md", "\n\n")
+        image_readmes_for(env, "traefik")
+
+        image_readme_of(env, "traefik").should contain "> ⚠️ **Fichier généré**"
+        image_readme_of(env, "traefik").should contain "```\n\n## Commandes\n"
+      end
+    end
+
+    it "leaves the README of the other images as they were" do
+      with_fixture_fleet do |env|
+        Dir.mkdir_p(File.join(env.dir, "docker-images", "traefik", "templates"))
+        overwrite_image(env, "traefik", "templates/README.md", "## Pourquoi\n")
+        image_readmes_for(env)
+
+        (FIXTURE_IMAGES - ["traefik"]).each do |image|
+          image_readme_of(env, image).should eq expected_fleet_file("docker-images/#{image}/README.md")
+        end
+      end
+    end
+  end
+
   # Mid-sweep, an unreadable config must not abandon the images after it.
   describe "an image whose config cannot be used" do
     it "is skipped when it carries no config" do

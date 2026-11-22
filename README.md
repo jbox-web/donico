@@ -1062,7 +1062,10 @@ treat the image like every other one, silently.
 The fleet also provides, in the configuration repository, `templates/README.md`
 (the head of the root README, which `update-readme` and `repos update` need;
 the tables are appended to it) and, optionally, `todo.yml` (planned images, by
-section: `images: { web: [caddy] }`).
+section: `images: { web: [caddy] }`). An image repository may carry its own
+`templates/README.md`: the text it keeps by hand, which `repos update-readme`
+inserts in its README between the usage and the commands; the README then says,
+below its description, that it is generated from that template.
 
 ### The commands
 
@@ -1106,7 +1109,8 @@ version of the binary.
   value or `TERM` is `dumb`.
 - **`update-readme`** rewrites the root `README.md` from `templates/README.md`
   and the `donico.yml` of each cloned image; **`repos update-readme`**
-  rewrites the `README.md` of each cloned image; **`heritage`** writes the
+  rewrites the `README.md` of each cloned image, its own `templates/README.md`
+  included when it has one; **`heritage`** writes the
   tree of the images' `FROM` lines to `heritage_output`. The README generators
   read `donico.yml` as plain YAML, without donico's validation, so an image
   donico would refuse still gets its line.
