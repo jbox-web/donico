@@ -165,25 +165,44 @@ module Donico
       @apt_proxy unless @env.vars["ENABLE_APT_PROXY"]? == "false"
     end
 
-    # CI_COMMIT_TIMESTAMP (ISO 8601) reformatted in its own offset, else the
-    # date of the clock. Computed on first use, not at load: a bad value must
-    # not break the tasks that never need a timestamp. Memoized so every image
-    # of a run shares one build tag, even across midnight.
+    # Under GitLab CI (GITLAB_CI is "true"), CI_PIPELINE_CREATED_AT; else
+    # CI_COMMIT_TIMESTAMP; each ISO 8601, reformatted in its own offset; else
+    # the date of the clock. Two GitLab pipelines of one commit (a push and the
+    # triggers of two parent images) share a runner's Docker daemon: under the
+    # commit's date they would share the build tag, and the clean of one would
+    # delete the image another is testing. Every job of a GitLab pipeline reads
+    # the same creation time (to the second: two pipelines created in one
+    # second still share a tag); donico-action, outside GitLab, sets
+    # CI_PIPELINE_CREATED_AT to the time each job starts, so it is not read
+    # there. Computed on first use, not at load: a bad value must not break the
+    # tasks that never need a timestamp. Memoized so every image of a run
+    # shares one build tag, even across midnight.
     def timestamp : String
       @timestamp ||= begin
-        ci = @env.vars["CI_COMMIT_TIMESTAMP"]?
-        if ci && !ci.empty?
+        name, value = timestamp_source
+        if value
           begin
-            Time.parse_iso8601(ci).to_s("%Y%m%d%H%M%S")
+            Time.parse_iso8601(value).to_s("%Y%m%d%H%M%S")
           rescue Time::Format::Error | ArgumentError | Time::Location::InvalidTimezoneOffsetError
             # Out-of-range fields (month 13) and offsets (+99:00) pass the
             # format but are refused by Time itself, with other exceptions.
-            raise ConfigError.new(%(CI_COMMIT_TIMESTAMP is not an ISO 8601 timestamp: "#{ci}"))
+            raise ConfigError.new(%(#{name} is not an ISO 8601 timestamp: "#{value}"))
           end
         else
           @env.now.to_s("%Y%m%d")
         end
       end
+    end
+
+    # The variable the build tag is read from, and its value; an empty
+    # variable counts as unset.
+    private def timestamp_source : {String, String?}
+      if @env.vars["GITLAB_CI"]? == "true"
+        created = @env.vars["CI_PIPELINE_CREATED_AT"]?
+        return {"CI_PIPELINE_CREATED_AT", created} if created && !created.empty?
+      end
+      commit = @env.vars["CI_COMMIT_TIMESTAMP"]?
+      {"CI_COMMIT_TIMESTAMP", (commit if commit && !commit.empty?)}
     end
 
     # Deduplicated: `dockerfile` defaults to "Dockerfile", so N distros would

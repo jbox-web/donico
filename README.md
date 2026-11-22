@@ -321,10 +321,14 @@ row with every default.
 
 ### Derived values
 
-- **Timestamp.** When `CI_COMMIT_TIMESTAMP` is set and not empty, it is parsed
-  as ISO 8601 and written as `%Y%m%d%H%M%S` in its own offset
-  (`2026-11-17T09:30:00+01:00` gives `20261117093000`). Otherwise it is the
-  current local date, `%Y%m%d`. It is computed once per run, so every image of
+- **Timestamp.** Under GitLab CI (`GITLAB_CI` is `true`), `CI_PIPELINE_CREATED_AT`
+  when it is set and not empty; else `CI_COMMIT_TIMESTAMP` when it is set and
+  not empty. The value is parsed as ISO 8601 and written as `%Y%m%d%H%M%S` in
+  its own offset (`2026-11-17T09:30:00+01:00` gives `20261117093000`).
+  Otherwise it is the current local date, `%Y%m%d`. The pipeline's creation
+  time gives each GitLab pipeline its own build tag: two pipelines of one
+  commit that share a runner's Docker daemon no longer delete each other's
+  images (unless both are created in the same second: the tag counts seconds). It is computed once per run, so every image of
   a run shares one build tag, even across midnight.
 - **Build tag.** `<name>/<version>/<distro>:<timestamp>`.
 - **Injected build args.** `DISTRO_NAME`, `BUILD_DATE` and `<NAME>_VERSION`,
@@ -962,12 +966,13 @@ runner must provide.
 
 | Variable | Effect |
 |---|---|
-| `CI_COMMIT_TIMESTAMP` | ISO 8601 timestamp that replaces the current date in the build tag and the `BUILD_DATE` arg (see [Derived values](#derived-values)). Unset or empty counts as unset; anything else that is not ISO 8601 is an error. |
+| `CI_COMMIT_TIMESTAMP` | ISO 8601 timestamp that replaces the current date in the build tag and the `BUILD_DATE` arg, unless `CI_PIPELINE_CREATED_AT` does under GitLab CI (see [Derived values](#derived-values)). Unset or empty counts as unset; anything else that is not ISO 8601 is an error. |
+| `GITLAB_CI` | When `true`, `CI_PIPELINE_CREATED_AT` dates the build tag and the `BUILD_DATE` arg ahead of `CI_COMMIT_TIMESTAMP`. |
 | `DONICO_QUIET` | When set, to any value, the `exec: ...` log lines are not printed. |
 | `ENABLE_APT_PROXY` | With `image_builder: debuerreotype`, `false` builds without the `apt_proxy` of `donico.yml`. Any other value, or none, leaves the proxy in use. |
-| `CI_PIPELINE_CREATED_AT` | With `image_builder: debuerreotype`, the ISO 8601 time the default `timestamp` of a row is the day before, instead of the current date. Unset or empty counts as unset; anything else that is not ISO 8601 is an error. |
+| `CI_PIPELINE_CREATED_AT` | Under GitLab CI, the ISO 8601 time of the build tag and the `BUILD_DATE` arg (see [Derived values](#derived-values)). With `image_builder: debuerreotype`, the time the default `timestamp` of a row is the day before, instead of the current date. Unset or empty counts as unset; anything else that is not ISO 8601 is an error. |
 
-`.env` can set all four. Variables named by `secret_envs` and `login_env` are read
+`.env` can set all five. Variables named by `secret_envs` and `login_env` are read
 from the environment of the docker call, and `BUILD_DATE` is written to it by
 `build` and `push`: none of them is put on a command line.
 

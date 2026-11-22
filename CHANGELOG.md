@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Under GitLab CI (`GITLAB_CI` is `true`), the build tag and `BUILD_DATE` are
+  dated from `CI_PIPELINE_CREATED_AT`, ahead of `CI_COMMIT_TIMESTAMP`. Two
+  pipelines of one commit (a push and the triggers of two parent images) used
+  to share the build tag on a runner's shared Docker daemon, so the `clean` of
+  one deleted the image another was testing. Outside GitLab CI nothing
+  changes: donico-action sets `CI_PIPELINE_CREATED_AT` to the time each job
+  starts, which is not read there. The `%<timestamp>s` macro of a pushed tag
+  follows: under GitLab CI it is the creation time of the pipeline, so two
+  pipelines of one commit push two tags.
+
 ## [3.5.0] - 2026-11-22
 
 ### Added

@@ -559,5 +559,37 @@ describe Donico::Config do
       error = expect_raises(Donico::ConfigError) { config.timestamp }
       error.message.should eq %(CI_COMMIT_TIMESTAMP is not an ISO 8601 timestamp: "2026-07-31T10:20:30+99:00")
     end
+
+    # Two GitLab pipelines of one commit share a runner's Docker daemon: under
+    # the commit's date they would share the build tag, and the clean of one
+    # would delete the image the other is testing. Every job of a pipeline
+    # reads the same CI_PIPELINE_CREATED_AT.
+    describe "under GitLab CI" do
+      it "is the creation time of the pipeline, in its own offset" do
+        config_from(MINIMAL, {"GITLAB_CI" => "true", "CI_PIPELINE_CREATED_AT" => "2026-11-22T05:40:26Z",
+                              "CI_COMMIT_TIMESTAMP" => "2026-11-22T06:26:52+01:00"}).timestamp.should eq "20261122054026"
+      end
+
+      it "falls back on CI_COMMIT_TIMESTAMP when the creation time is unset or empty" do
+        config_from(MINIMAL, {"GITLAB_CI" => "true", "CI_COMMIT_TIMESTAMP" => "2026-11-22T06:26:52+01:00"}).timestamp.should eq "20261122062652"
+        config_from(MINIMAL, {"GITLAB_CI" => "true", "CI_PIPELINE_CREATED_AT" => "",
+                              "CI_COMMIT_TIMESTAMP" => "2026-11-22T06:26:52+01:00"}).timestamp.should eq "20261122062652"
+      end
+
+      it "fails on use when the creation time is not ISO 8601" do
+        config = config_from(MINIMAL, {"GITLAB_CI" => "true", "CI_PIPELINE_CREATED_AT" => "now"})
+        error = expect_raises(Donico::ConfigError) { config.timestamp }
+        error.message.should eq %(CI_PIPELINE_CREATED_AT is not an ISO 8601 timestamp: "now")
+      end
+    end
+
+    # donico-action sets CI_PIPELINE_CREATED_AT to the time each job starts:
+    # read outside GitLab CI, it would give build, test and push three tags.
+    it "keeps the commit's date outside GitLab CI, whatever CI_PIPELINE_CREATED_AT holds" do
+      config_from(MINIMAL, {"CI_PIPELINE_CREATED_AT" => "2026-11-22T05:40:26Z",
+                            "CI_COMMIT_TIMESTAMP"    => "2026-11-22T06:26:52+01:00"}).timestamp.should eq "20261122062652"
+      config_from(MINIMAL, {"GITLAB_CI" => "false", "CI_PIPELINE_CREATED_AT" => "2026-11-22T05:40:26Z",
+                            "CI_COMMIT_TIMESTAMP" => "2026-11-22T06:26:52+01:00"}).timestamp.should eq "20261122062652"
+    end
   end
 end
